@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 from PIL import Image
 
-st.title("📸 Sleek-Industrial 工作記錄器")
+st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
@@ -32,7 +32,6 @@ photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'pn
 if st.button("➕ 新增到今日清單"):
     if photo is not None:
         try:
-            # 關鍵修復：使用 Pillow 自動將相片轉成標準 RGB JPEG 格式，並配上 name 屬性
             img = Image.open(photo)
             if img.mode in ('RGBA', 'LA', 'P'):
                 img = img.convert('RGB')
@@ -40,13 +39,12 @@ if st.button("➕ 新增到今日清單"):
             photo_bytes = io.BytesIO()
             img.save(photo_bytes, format='JPEG', quality=90)
             photo_bytes.seek(0)
-            photo_bytes.name = "photo.jpg" # python-docx 需要檔名屬性
+            photo_bytes.name = "photo.jpg"
             
             f_val = floor.strip() if floor else ""
             r_val = room.strip() if room else ""
             
             st.session_state['records'].append({
-                "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "floor": f_val,
                 "room": r_val,
                 "category": category,
@@ -71,7 +69,6 @@ if len(st.session_state['records']) > 0:
         loc_str = " - ".join(loc_parts) if loc_parts else "未註明位置"
         
         with st.expander(f"項目 #{i+1}: {loc_str} ({rec['category']})"):
-            st.write(f"時間：{rec['time']}")
             st.write(f"備忘：{rec['remarks']}")
             
             # 預覽相片前先重置指標
@@ -113,7 +110,6 @@ if st.button("📥 一鍵生成 Word 報告"):
             
             doc.add_heading(loc_title, level=2)
             doc.add_paragraph(f"• 工程類別：{rec['category']}")
-            doc.add_paragraph(f"• 記錄時間：{rec['time']}")
             doc.add_paragraph(f"• 工作備忘：{rec['remarks']}")
             
             try:
