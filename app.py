@@ -104,3 +104,20 @@ if st.button("📥 一鍵生成 Word 報告"):
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
+        # --- 💡 低調質感水印 (Subtle & Clean Footer) ---
+st.markdown("""
+    <style>
+    .subtle-footer {
+        margin-top: 3.5rem;
+        padding-top: 0.8rem;
+        border-top: 1px solid rgba(128, 128, 128, 0.15);
+        text-align: right;
+        color: rgba(128, 128, 128, 0.6);
+        font-size: 0.75rem;
+        letter-spacing: 0.3px;
+    }
+    </style>
+    <div class="subtle-footer">
+        Design by nikki 💅
+    </div>
+""", unsafe_allow_html=True)
