@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 from PIL import Image
 
-st.title("📸 Sleek-Industrial 進度記錄器")
+st.title("📸 Sleek-Industrial 工作記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
