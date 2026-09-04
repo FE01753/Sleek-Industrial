@@ -1,7 +1,9 @@
 import streamlit as st
 from docx import Document
+from docx.shared import Inches
 import io
 from datetime import datetime
+from PIL import Image
 
 st.title("📸 Sleek-Industrial 進度記錄器")
 
@@ -18,35 +20,42 @@ if 'records' not in st.session_state:
 # --- 輸入當前記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
-# 樓層與房間全部改為選填
 floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 3/F (可留空)")
 room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例如: Function Room A / 掣房 (可留空)")
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 
 # 拍照或上傳相片
-photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'png'])
+photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'png', 'heic'])
 
 # 加入暫存清單按鈕
 if st.button("➕ 新增到今日清單"):
-    # 檢查條件改為：只要有相片即可（樓層同房間全變成選填）
     if photo is not None:
-        # 將相片轉成獨立嘅 BytesIO 串流
-        photo_bytes = io.BytesIO(photo.getvalue())
-        
-        # 處理顯示文字
-        f_val = floor.strip() if floor else ""
-        r_val = room.strip() if room else ""
-        
-        st.session_state['records'].append({
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "floor": f_val,
-            "room": r_val,
-            "category": category,
-            "remarks": remarks,
-            "photo": photo_bytes
-        })
-        st.success("成功新增現場記錄！")
+        try:
+            # 關鍵修復：使用 Pillow 自動將相片轉成標準 RGB JPEG 格式，並配上 name 屬性
+            img = Image.open(photo)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            photo_bytes = io.BytesIO()
+            img.save(photo_bytes, format='JPEG', quality=90)
+            photo_bytes.seek(0)
+            photo_bytes.name = "photo.jpg" # python-docx 需要檔名屬性
+            
+            f_val = floor.strip() if floor else ""
+            r_val = room.strip() if room else ""
+            
+            st.session_state['records'].append({
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "floor": f_val,
+                "room": r_val,
+                "category": category,
+                "remarks": remarks,
+                "photo": photo_bytes
+            })
+            st.success("成功新增現場記錄！")
+        except Exception as e:
+            st.error(f"相片處理失敗，請嘗試另一張相片。錯誤詳情: {e}")
     else:
         st.warning("請上傳或拍攝現場相片！")
 
@@ -56,7 +65,6 @@ st.divider()
 st.subheader("📋 今日已記錄項目")
 if len(st.session_state['records']) > 0:
     for i, rec in enumerate(st.session_state['records']):
-        # 組裝顯示標題
         loc_parts = []
         if rec['floor']: loc_parts.append(f"樓層: {rec['floor']}")
         if rec['room']: loc_parts.append(f"區域: {rec['room']}")
@@ -111,7 +119,7 @@ if st.button("📥 一鍵生成 Word 報告"):
             try:
                 # 插入 Word 前將指標歸零
                 rec['photo'].seek(0)
-                doc.add_picture(rec['photo'], width=docx.shared.Inches(4.5))
+                doc.add_picture(rec['photo'], width=Inches(4.5))
             except Exception as e:
                 doc.add_paragraph("[相片載入失敗]")
             
