@@ -7,7 +7,7 @@ st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
-job_title = st.text_input("Job Title / 工程項目名稱", value="Regent Hotel E&M Diversion Work", placeholder="例如: Regent Hotel F3 改善工程")
+job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: Regent Hotel F3 改善工程")
 
 st.divider()
 
@@ -18,21 +18,17 @@ if 'records' not in st.session_state:
 # --- 輸入當前記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
-# 樓層改成文字輸入框
 floor = st.text_input("樓層 (Floor)", placeholder="例如: B2 / G/F / 3/F")
 room = st.text_input("房間 / 區域 (Room / Area)", placeholder="例如: Function Room A / 掣房")
-
-# 工程類別改成要求的選項
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
-
-# 刪除「發現問題」字眼，改為純備忘
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
-photo = st.camera_input("拍攝現場相片") # 或者用 st.file_uploader
+
+# 改用 file_uploader：手機點擊時會直接呼叫手機相機（通常預設後置鏡頭）或相簿
+photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'png'])
 
 # 加入暫存清單按鈕
 if st.button("➕ 新增到今日清單"):
     if photo is not None and floor and room:
-        # 將資料加入 session_state
         st.session_state['records'].append({
             "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "floor": floor,
@@ -43,7 +39,7 @@ if st.button("➕ 新增到今日清單"):
         })
         st.success(f"成功新增：{floor} - {room}")
     else:
-        st.warning("請填寫樓層、房間名稱並拍攝相片！")
+        st.warning("請填寫樓層、房間名稱並上傳/拍攝相片！")
 
 st.divider()
 
@@ -56,7 +52,6 @@ if len(st.session_state['records']) > 0:
             st.write(f"備忘：{rec['remarks']}")
             st.image(rec['photo'], width=300)
             
-            # 刪除單個記錄嘅按鈕
             if st.button(f"刪除此項 #{i+1}", key=f"del_{i}"):
                 st.session_state['records'].pop(i)
                 st.rerun()
@@ -75,40 +70,34 @@ if st.button("📥 一鍵生成 Word 報告"):
     if len(st.session_state['records']) == 0:
         st.warning("請先新增至少一個記錄先可以出 Report！")
     else:
-        # 建立 Word 文件
         doc = Document()
         
-        # 融入 Job Title
         doc.add_heading(f"工程進度巡檢報告", 0)
-        doc.add_paragraph(f"Job Title: {job_title}")
+        display_title = job_title if job_title.strip() != "" else "Unnamed Project"
+        doc.add_paragraph(f"Job Title: {display_title}")
         doc.add_paragraph(f"生成日期：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
         doc.add_paragraph(f"總記錄項目數：{len(st.session_state['records'])} 項\n")
         doc.add_paragraph("-" * 40)
         
-        # 循環寫入每一項記錄
         for i, rec in enumerate(st.session_state['records']):
             doc.add_heading(f"項目 {i+1}: {rec['floor']} - {rec['room']}", level=2)
             doc.add_paragraph(f"• 工程類別：{rec['category']}")
             doc.add_paragraph(f"• 記錄時間：{rec['time']}")
             doc.add_paragraph(f"• 工作備忘：{rec['remarks']}")
             
-            # 插入相片
             try:
                 doc.add_picture(rec['photo'], width=docx.shared.Inches(4.5))
             except Exception as e:
                 doc.add_paragraph("[相片載入失敗]")
             
-            doc.add_paragraph("-" * 30) # 分隔線
+            doc.add_paragraph("-" * 30)
             
-        # 儲存至記憶體
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
         
-        # 檔名自動帶埋 Job Title 方便辨識
-        safe_job_title = "".join(c for c in job_title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
+        safe_job_title = "".join(c for c in display_title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
         
-        # 提供下載
         st.download_button(
             label="💾 點擊下載 Word 報告 (.docx)",
             data=buffer,
