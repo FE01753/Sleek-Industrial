@@ -7,7 +7,7 @@ st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
-job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: K11 LV A&A WORK")
+job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: Regent Hotel F3 改善工程")
 
 st.divider()
 
@@ -23,19 +23,22 @@ room = st.text_input("房間 / 區域 (Room / Area)", placeholder="例如: Funct
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 
-# 改用 file_uploader：手機點擊時會直接呼叫手機相機（通常預設後置鏡頭）或相簿
+# 拍照或上傳相片
 photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'png'])
 
 # 加入暫存清單按鈕
 if st.button("➕ 新增到今日清單"):
     if photo is not None and floor and room:
+        # 關鍵修正：將相片轉成獨立嘅 BytesIO 串流，避免檔案指標過期失效
+        photo_bytes = io.BytesIO(photo.getvalue())
+        
         st.session_state['records'].append({
             "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "floor": floor,
             "room": room,
             "category": category,
             "remarks": remarks,
-            "photo": photo
+            "photo": photo_bytes
         })
         st.success(f"成功新增：{floor} - {room}")
     else:
@@ -50,6 +53,9 @@ if len(st.session_state['records']) > 0:
         with st.expander(f"項目 #{i+1}: {rec['floor']} - {rec['room']} ({rec['category']})"):
             st.write(f"時間：{rec['time']}")
             st.write(f"備忘：{rec['remarks']}")
+            
+            # 預覽相片前先重置指標
+            rec['photo'].seek(0)
             st.image(rec['photo'], width=300)
             
             if st.button(f"刪除此項 #{i+1}", key=f"del_{i}"):
@@ -86,6 +92,8 @@ if st.button("📥 一鍵生成 Word 報告"):
             doc.add_paragraph(f"• 工作備忘：{rec['remarks']}")
             
             try:
+                # 插入 Word 前將指標歸零
+                rec['photo'].seek(0)
                 doc.add_picture(rec['photo'], width=docx.shared.Inches(4.5))
             except Exception as e:
                 doc.add_paragraph("[相片載入失敗]")
@@ -104,20 +112,3 @@ if st.button("📥 一鍵生成 Word 報告"):
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        # --- 💡 低調質感水印 (Subtle & Clean Footer) ---
-st.markdown("""
-    <style>
-    .subtle-footer {
-        margin-top: 3.5rem;
-        padding-top: 0.8rem;
-        border-top: 1px solid rgba(128, 128, 128, 0.15);
-        text-align: right;
-        color: rgba(128, 128, 128, 0.6);
-        font-size: 0.75rem;
-        letter-spacing: 0.3px;
-    }
-    </style>
-    <div class="subtle-footer">
-        Design by nikki 💅
-    </div>
-""", unsafe_allow_html=True)
