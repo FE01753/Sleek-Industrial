@@ -3,7 +3,7 @@ from docx import Document
 import io
 from datetime import datetime
 
-st.title("📸 工程進度相片記錄與報告生成器")
+st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
@@ -15,18 +15,23 @@ st.divider()
 if 'records' not in st.session_state:
     st.session_state['records'] = []
 
-# --- 側邊欄或上方：輸入當前記錄 ---
+# --- 輸入當前記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
-floor = st.selectbox("樓層 (Floor)", ["B2", "G/F", "1/F", "2/F", "3/F", "天台"])
+# 樓層改成文字輸入框
+floor = st.text_input("樓層 (Floor)", placeholder="例如: B2 / G/F / 3/F")
 room = st.text_input("房間 / 區域 (Room / Area)", placeholder="例如: Function Room A / 掣房")
-category = st.selectbox("工程類別", ["初步度尺", "E&M 喉管安裝", "FCU 安裝", "消防系統", "驗收執漏"])
-remarks = st.text_area("工作備忘 / 發現問題")
+
+# 工程類別改成要求的選項
+category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
+
+# 刪除「發現問題」字眼，改為純備忘
+remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 photo = st.camera_input("拍攝現場相片") # 或者用 st.file_uploader
 
 # 加入暫存清單按鈕
 if st.button("➕ 新增到今日清單"):
-    if photo is not None and room:
+    if photo is not None and floor and room:
         # 將資料加入 session_state
         st.session_state['records'].append({
             "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -38,7 +43,7 @@ if st.button("➕ 新增到今日清單"):
         })
         st.success(f"成功新增：{floor} - {room}")
     else:
-        st.warning("請填寫房間名稱並拍攝相片！")
+        st.warning("請填寫樓層、房間名稱並拍攝相片！")
 
 st.divider()
 
@@ -100,7 +105,7 @@ if st.button("📥 一鍵生成 Word 報告"):
         doc.save(buffer)
         buffer.seek(0)
         
-        # 檔名自動帶埋 Job Title 方便辨識 (過濾左啲特殊字元)
+        # 檔名自動帶埋 Job Title 方便辨識
         safe_job_title = "".join(c for c in job_title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
         
         # 提供下載
