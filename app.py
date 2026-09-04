@@ -7,7 +7,7 @@ st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 0. 設定 Job Title (工程項目名稱) ---
 st.subheader("📌 項目基本資料")
-job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: Regent Hotel F3 改善工程")
+job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: K11 LV A&A WORK")
 
 st.divider()
 
