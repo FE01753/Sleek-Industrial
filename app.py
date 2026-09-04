@@ -18,8 +18,8 @@ if 'records' not in st.session_state:
 # --- 輸入當前記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
-floor = st.text_input("樓層 (Floor)", placeholder="例如: B2 / G/F / 3/F")
-# 改為非必填項（可留空）
+# 樓層與房間全部改為選填
+floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 3/F (可留空)")
 room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例如: Function Room A / 掣房 (可留空)")
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
@@ -29,22 +29,26 @@ photo = st.file_uploader("拍攝或上傳現場相片", type=['jpg', 'jpeg', 'pn
 
 # 加入暫存清單按鈕
 if st.button("➕ 新增到今日清單"):
-    # 檢查條件改為：只需要有樓層、相片即可（房間改為選填）
-    if photo is not None and floor:
+    # 檢查條件改為：只要有相片即可（樓層同房間全變成選填）
+    if photo is not None:
         # 將相片轉成獨立嘅 BytesIO 串流
         photo_bytes = io.BytesIO(photo.getvalue())
         
+        # 處理顯示文字
+        f_val = floor.strip() if floor else ""
+        r_val = room.strip() if room else ""
+        
         st.session_state['records'].append({
             "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "floor": floor,
-            "room": room if room.strip() != "" else "N/A", # 如果留空則顯示 N/A
+            "floor": f_val,
+            "room": r_val,
             "category": category,
             "remarks": remarks,
             "photo": photo_bytes
         })
-        st.success(f"成功新增：樓層 {floor}" + (f" - 區域 {room}" if room else ""))
+        st.success("成功新增現場記錄！")
     else:
-        st.warning("請填寫樓層並上傳/拍攝相片！")
+        st.warning("請上傳或拍攝現場相片！")
 
 st.divider()
 
@@ -52,8 +56,13 @@ st.divider()
 st.subheader("📋 今日已記錄項目")
 if len(st.session_state['records']) > 0:
     for i, rec in enumerate(st.session_state['records']):
-        display_location = f"{rec['floor']}" + (f" / {rec['room']}" if rec['room'] != "N/A" else "")
-        with st.expander(f"項目 #{i+1}: {display_location} ({rec['category']})"):
+        # 組裝顯示標題
+        loc_parts = []
+        if rec['floor']: loc_parts.append(f"樓層: {rec['floor']}")
+        if rec['room']: loc_parts.append(f"區域: {rec['room']}")
+        loc_str = " - ".join(loc_parts) if loc_parts else "未註明位置"
+        
+        with st.expander(f"項目 #{i+1}: {loc_str} ({rec['category']})"):
             st.write(f"時間：{rec['time']}")
             st.write(f"備忘：{rec['remarks']}")
             
@@ -89,7 +98,11 @@ if st.button("📥 一鍵生成 Word 報告"):
         doc.add_paragraph("-" * 40)
         
         for i, rec in enumerate(st.session_state['records']):
-            loc_title = f"項目 {i+1}: 樓層 {rec['floor']}" + (f" - 區域 {rec['room']}" if rec['room'] != "N/A" else "")
+            loc_parts = []
+            if rec['floor']: loc_parts.append(f"樓層 {rec['floor']}")
+            if rec['room']: loc_parts.append(f"區域 {rec['room']}")
+            loc_title = f"項目 {i+1}: " + (" - ".join(loc_parts) if loc_parts else "未註明位置")
+            
             doc.add_heading(loc_title, level=2)
             doc.add_paragraph(f"• 工程類別：{rec['category']}")
             doc.add_paragraph(f"• 記錄時間：{rec['time']}")
