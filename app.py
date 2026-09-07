@@ -95,7 +95,7 @@ if st.button("📥 一鍵生成 Word 報告"):
     else:
         doc = Document()
         
-        doc.add_heading(f"工程進度巡檢報告", 0)
+        doc.add_heading("工程進度巡檢報告", 0)
         display_title = job_title if job_title.strip() != "" else "Unnamed Project"
         doc.add_paragraph(f"Job Title: {display_title}")
         doc.add_paragraph(f"生成日期：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -132,8 +132,9 @@ if st.button("📥 一鍵生成 Word 報告"):
             data=buffer,
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            
-       # --- App 底部專屬水印 (Footer) ---
+        )
+
+# --- App 底部專屬水印 (Footer) ---
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: gray; font-size: 14px;'>"
