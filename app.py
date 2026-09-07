@@ -132,4 +132,12 @@ if st.button("📥 一鍵生成 Word 報告"):
             data=buffer,
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+            
+       # --- App 底部專屬水印 (Footer) ---
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: gray; font-size: 14px;'>"
+    "🛠️ <b>Design by nikki 💅</b>"
+    "</div>", 
+    unsafe_allow_html=True
+)
