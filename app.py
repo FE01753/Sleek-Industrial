@@ -1,4 +1,6 @@
 import io
+import os
+import pickle
 from datetime import datetime
 from collections import defaultdict
 from PIL import Image
@@ -10,10 +12,10 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 
-# --- 頁面配置 ---
 st.set_page_config(page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered")
 
-# --- XML 輔助函式：設置 Word 表格 Cell 黑/灰實線邊框 ---
+DRAFT_FILE = "draft_records.pkl"
+
 def set_cell_border(cell, color="000000", sz="6", val="single"):
     tcPr = cell._element.get_or_add_tcPr()
     tcBorders = parse_xml(
@@ -28,26 +30,55 @@ def set_cell_border(cell, color="000000", sz="6", val="single"):
 
 st.title("📸 Sleek-Industrial 進度記錄器")
 
-# --- 0. 設定 Job Title (工程項目名稱) ---
-st.subheader("📌 項目基本資料")
-job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholder="例如: Regent Hotel F3 改善工程")
+# --- 暫存 / 載入草稿功能區域 ---
+col_s1, col_s2 = st.columns(2)
+with col_s1:
+    if st.button("💾 暫存草稿 (防止 Refresh)", use_container_width=True):
+        if 'records' in st.session_state and len(st.session_state['records']) > 0:
+            with open(DRAFT_FILE, "wb") as f:
+                pickle.dump({
+                    "job_title": st.session_state.get('job_title_input', ''),
+                    "records": st.session_state['records']
+                }, f)
+            st.success("已成功暫存！就算重新整理網頁都可以載入返。")
+        else:
+            st.warning("目前未有記錄可以暫存。")
+
+with col_s2:
+    if st.button("📂 載入上次草稿", use_container_width=True):
+        if os.path.exists(DRAFT_FILE):
+            with open(DRAFT_FILE, "rb") as f:
+                data = pickle.load(f)
+                st.session_state['records'] = data.get("records", [])
+                st.session_state['job_title_input'] = data.get("job_title", "")
+            st.success("成功載入上次草稿！")
+            st.rerun()
+        else:
+
+            st.info("搵唔到任何暫存草稿。")
 
 st.divider()
 
-# --- 1. 初始化 Session State (暫存記錄 + Uploader Key) ---
+# --- 0. 設定 Job Title ---
+st.subheader("📌 項目基本資料")
+job_title = st.text_input("Job Title / 工程項目名稱", value=st.session_state.get('job_title_input', ''), key='job_title_input', placeholder="例如: Regent Hotel F3 改善工程")
+
+st.divider()
+
+# --- 1. 初始化 Session State ---
 if 'records' not in st.session_state:
     st.session_state['records'] = []
 
 if 'uploader_key' not in st.session_state:
     st.session_state['uploader_key'] = 0
 
-# 輔助函式：將 records 依 (Floor, Category) 自動分組
 def get_grouped_records():
     grouped = defaultdict(list)
     for idx, rec in enumerate(st.session_state['records']):
         f_val = rec['floor'] if rec['floor'] else "未註明樓層"
+        r_val = rec['room'] if rec['room'] else "未註明區域"
         cat_val = rec['category']
-        key = (f_val, cat_val)
+        key = (f_val, r_val, cat_val)
         grouped[key].append((idx, rec))
     return grouped
 
@@ -59,7 +90,6 @@ room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例�
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 
-# 📸 使用動態 Key 實現自動清空與手動重置
 photos = st.file_uploader(
     "拍攝或上傳現場相片 (可一次選取多張)", 
     type=['jpg', 'jpeg', 'png', 'heic'], 
@@ -67,7 +97,6 @@ photos = st.file_uploader(
     key=f"uploader_{st.session_state['uploader_key']}"
 )
 
-# 橫向排列按鈕
 col_btn1, col_btn2 = st.columns([1, 1])
 
 with col_btn1:
@@ -101,9 +130,8 @@ with col_btn1:
                     st.error(f"相片 {p.name} 處理失敗: {e}")
             
             if success_count > 0:
-                # 成功新增後自動更新 Key 以重置相片欄位
                 st.session_state['uploader_key'] += 1
-                st.success(f"成功新增 {success_count} 張相片！相片區域已自動清空。")
+                st.success(f"成功新增 {success_count} 張相片！")
                 st.rerun()
         else:
             st.warning("請上傳或拍攝至少一張現場相片！")
@@ -115,20 +143,19 @@ with col_btn2:
 
 st.divider()
 
-# --- 3. 顯示已記錄清單 (自動依樓層/類別 Grouping) ---
+# --- 3. 顯示已記錄清單 ---
 st.subheader("📋 今日已記錄項目 (已自動分類)")
 grouped_data = get_grouped_records()
 
 if len(grouped_data) > 0:
-    for (group_floor, group_cat), items in grouped_data.items():
-        with st.expander(f"🏢 樓層: {group_floor} ({group_cat}) — 共 {len(items)} 張相片", expanded=True):
+    for (group_floor, group_room, group_cat), items in grouped_data.items():
+        title_str = f"🏢 樓層: {group_floor} | 📍 區域: {group_room} | 🔧 類別: {group_cat} (共 {len(items)} 張)"
+        with st.expander(title_str, expanded=True):
             cols = st.columns(3)
             for sub_idx, (orig_idx, rec) in enumerate(items):
                 with cols[sub_idx % 3]:
                     rec['photo'].seek(0)
                     st.image(rec['photo'], use_container_width=True)
-                    if rec['room']:
-                        st.caption(f"📍 區域: {rec['room']}")
                     if rec['remarks']:
                         st.write(f"📝 {rec['remarks']}")
                     if st.button("🗑️ 刪除", key=f"del_{orig_idx}"):
@@ -138,13 +165,15 @@ if len(grouped_data) > 0:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ 清空所有記錄"):
         st.session_state['records'] = []
+        if os.path.exists(DRAFT_FILE):
+            os.remove(DRAFT_FILE)
         st.rerun()
 else:
     st.info("暫時未有記錄，請喺上面新增。")
 
 st.divider()
 
-# --- 4. 一鍵生成 Word 報告 (自動分組 + 2x3 Grid + 黑色相框) ---
+# --- 4. 一鍵生成 Word 報告 ---
 st.subheader("3️⃣ 匯出報告")
 if st.button("📥 一鍵生成 Word 報告"):
     if len(st.session_state['records']) == 0:
@@ -152,7 +181,6 @@ if st.button("📥 一鍵生成 Word 報告"):
     else:
         doc = Document()
 
-        # 窄邊距設定 (Top/Bottom/Left/Right)
         for section in doc.sections:
             section.top_margin = Inches(0.4)
             section.bottom_margin = Inches(0.4)
@@ -161,7 +189,6 @@ if st.button("📥 一鍵生成 Word 報告"):
 
         display_title = job_title.strip() if job_title.strip() != "" else "Unnamed Project"
 
-        # 精簡 Header
         header_p = doc.add_paragraph()
         header_p.paragraph_format.space_after = Pt(6)
         r_title = header_p.add_run(f"Job Title: {display_title}")
@@ -172,23 +199,27 @@ if st.button("📥 一鍵生成 Word 報告"):
         r_date.font.size = Pt(10)
         r_date.font.color.rgb = RGBColor(100, 100, 100)
 
-        # 依 Group 生成內容
         cols_per_row = 2
-        global_card_count = 0  # 控制 6 張自動分頁
-        group_index = 0        # 記錄分類組數
+        global_card_count = 0
+        group_index = 0
 
-        for (group_floor, group_cat), items in grouped_data.items():
-            # 第二個記錄項目 (Group) 開始自動換新頁，避免標題卡在上一頁底部
+        for (group_floor, group_room, group_cat), items in grouped_data.items():
             if group_index > 0:
                 doc.add_page_break()
-                global_card_count = 0  # 換頁後計數重置
+                global_card_count = 0
             
             group_index += 1
 
             group_p = doc.add_paragraph()
             group_p.paragraph_format.space_before = Pt(4)
             group_p.paragraph_format.space_after = Pt(4)
-            r_grp = group_p.add_run(f"【 樓層: {group_floor}  |  工程類別: {group_cat} 】")
+            
+            header_text = f"【 樓層: {group_floor}"
+            if group_room != "未註明區域":
+                header_text += f"  |  區域: {group_room}"
+            header_text += f"  |  工程類別: {group_cat} 】"
+
+            r_grp = group_p.add_run(header_text)
             r_grp.bold = True
             r_grp.font.size = Pt(11)
             r_grp.font.color.rgb = RGBColor(0, 51, 102)
@@ -211,7 +242,6 @@ if st.button("📥 一鍵生成 Word 報告"):
                         orig_idx, rec = items[item_sub_idx]
                         global_card_count += 1
 
-                        # 設置外邊框 (相框效果)
                         set_cell_border(cell, color="000000", sz="6", val="single")
 
                         p = cell.paragraphs[0]
@@ -219,34 +249,21 @@ if st.button("📥 一鍵生成 Word 報告"):
                         p.paragraph_format.space_before = Pt(2)
                         p.paragraph_format.space_after = Pt(2)
 
-                        # 1. 插入相片：固定高度 (2.2 Inches)，令直相與橫相高度一致
                         try:
                             rec['photo'].seek(0)
                             p.add_run().add_picture(rec['photo'], height=Inches(2.2))
                         except Exception:
                             p.add_run("[相片載入失敗]")
 
-                        # 2. 插入文字 (無填寫則完全隱藏)
-                        has_room = bool(rec['room'])
-                        has_remarks = bool(rec['remarks'])
-
-                        if has_room or has_remarks:
+                        if rec['remarks']:
                             p_txt = cell.add_paragraph()
                             p_txt.paragraph_format.space_before = Pt(2)
                             p_txt.paragraph_format.space_after = Pt(4)
                             p_txt.paragraph_format.line_spacing = 1.0
 
-                            if has_room:
-                                r_room = p_txt.add_run(f"區域: {rec['room']}")
-                                r_room.bold = True
-                                r_room.font.size = Pt(9)
-                                if has_remarks:
-                                    p_txt.add_run("\n")
-
-                            if has_remarks:
-                                r_rem = p_txt.add_run(f"備忘: {rec['remarks']}")
-                                r_rem.font.size = Pt(8.5)
-                                r_rem.font.color.rgb = RGBColor(50, 50, 50)
+                            r_rem = p_txt.add_run(f"備忘: {rec['remarks']}")
+                            r_rem.font.size = Pt(8.5)
+                            r_rem.font.color.rgb = RGBColor(50, 50, 50)
 
                     else:
                         set_cell_border(cell, color="FFFFFF", sz="0", val="none")
@@ -268,7 +285,6 @@ if st.button("📥 一鍵生成 Word 報告"):
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
-# --- App 底部專屬水印 (Footer) ---
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: gray; font-size: 14px;'>"
