@@ -54,7 +54,6 @@ with col_s2:
             st.success("成功載入上次草稿！")
             st.rerun()
         else:
-
             st.info("搵唔到任何暫存草稿。")
 
 st.divider()
@@ -76,7 +75,7 @@ def get_grouped_records():
     grouped = defaultdict(list)
     for idx, rec in enumerate(st.session_state['records']):
         f_val = rec['floor'] if rec['floor'] else "未註明樓層"
-        r_val = rec['room'] if rec['room'] else "未註明區域"
+        r_val = rec['room'] if rec['room'] else ""
         cat_val = rec['category']
         key = (f_val, r_val, cat_val)
         grouped[key].append((idx, rec))
@@ -143,13 +142,20 @@ with col_btn2:
 
 st.divider()
 
-# --- 3. 顯示已記錄清單 ---
+# --- 3. 顯示已記錄清單 (未填寫區域自動隱藏) ---
 st.subheader("📋 今日已記錄項目 (已自動分類)")
 grouped_data = get_grouped_records()
 
 if len(grouped_data) > 0:
     for (group_floor, group_room, group_cat), items in grouped_data.items():
-        title_str = f"🏢 樓層: {group_floor} | 📍 區域: {group_room} | 🔧 類別: {group_cat} (共 {len(items)} 張)"
+        # 動態組合標題，若 group_room 為空則不安插區域字串
+        title_parts = [f"🏢 樓層: {group_floor}"]
+        if group_room:
+            title_parts.append(f"📍 區域: {group_room}")
+        title_parts.append(f"🔧 類別: {group_cat} (共 {len(items)} 張)")
+        
+        title_str = " | ".join(title_parts)
+        
         with st.expander(title_str, expanded=True):
             cols = st.columns(3)
             for sub_idx, (orig_idx, rec) in enumerate(items):
@@ -215,7 +221,7 @@ if st.button("📥 一鍵生成 Word 報告"):
             group_p.paragraph_format.space_after = Pt(4)
             
             header_text = f"【 樓層: {group_floor}"
-            if group_room != "未註明區域":
+            if group_room:
                 header_text += f"  |  區域: {group_room}"
             header_text += f"  |  工程類別: {group_cat} 】"
 
