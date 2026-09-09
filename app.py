@@ -1,5 +1,6 @@
 import io
 import os
+import glob
 import pickle
 from datetime import datetime
 from collections import defaultdict
@@ -26,6 +27,20 @@ def set_cell_border(cell, color="000000", sz="6", val="single"):
     )
     tcPr.append(tcBorders)
 
+def get_saved_drafts():
+    """獲取目前所有已暫存的 Job 草稿清單"""
+    draft_files = glob.glob("draft_*.pkl")
+    draft_map = {}
+    for filepath in draft_files:
+        try:
+            with open(filepath, "rb") as f:
+                data = pickle.load(f)
+                j_title = data.get("job_title", filepath)
+                draft_map[j_title] = filepath
+        except Exception:
+            pass
+    return draft_map
+
 st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 1. 初始化 Session State ---
@@ -38,51 +53,69 @@ if 'uploader_key' not in st.session_state:
 if 'job_title' not in st.session_state:
     st.session_state['job_title'] = ""
 
-# --- 2. 設定 Job Title ---
-st.subheader("📌 項目基本資料")
+# --- 2. 設定 Job Title 與 暫存/載入管理 ---
+st.subheader("📌 項目基本資料 & 草稿管理")
+
 job_title = st.text_input(
     "Job Title / 工程項目名稱", 
     value=st.session_state['job_title'], 
     placeholder="例如: Regent Hotel F3 改善工程"
 )
-# 即時更新至 session_state
 st.session_state['job_title'] = job_title
 
-# 根據 Job Title 生成專屬草稿檔名
 safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
 DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
 
-st.divider()
+col_save, col_load_ui = st.columns([1, 1.2])
 
-# --- 3. 暫存 / 載入草稿功能區域 (修復 Widget Error) ---
-col_s1, col_s2 = st.columns(2)
-with col_s1:
+with col_save:
+    st.markdown("**💾 暫存目前工作**")
     if st.button("💾 暫存此 Job 草稿", use_container_width=True):
         if not safe_job:
-            st.warning("請先輸入 Job Title / 工程項目名稱，先可以進行專屬暫存！")
+            st.warning("請先輸入 Job Title，先可以進行專屬暫存！")
         elif len(st.session_state['records']) > 0:
             with open(DRAFT_FILE, "wb") as f:
                 pickle.dump({
                     "job_title": job_title,
                     "records": st.session_state['records']
                 }, f)
-            st.success(f"已成功暫存【{job_title}】嘅草稿！")
+            st.success(f"已成功暫存【{job_title}】！")
+            st.rerun()
         else:
             st.warning("目前未有記錄可以暫存。")
 
-with col_s2:
-    if st.button("📂 載入此 Job 草稿", use_container_width=True):
-        if not safe_job:
-            st.warning("請先輸入 Job Title / 工程項目名稱，先可以載入對應草稿！")
-        elif os.path.exists(DRAFT_FILE):
-            with open(DRAFT_FILE, "rb") as f:
-                data = pickle.load(f)
-                st.session_state['records'] = data.get("records", [])
-                st.session_state['job_title'] = data.get("job_title", job_title)
-            st.success(f"成功載入【{job_title}】嘅草稿！")
-            st.rerun()
-        else:
-            st.info(f"搵唔到【{job_title}】嘅暫存草稿。")
+with col_load_ui:
+    st.markdown("**📂 載入已有的 Job 草稿**")
+    saved_drafts = get_saved_drafts()
+    
+    if saved_drafts:
+        selected_draft_title = st.selectbox(
+            "揀選要繼續的 Job", 
+            options=list(saved_drafts.keys()),
+            key="draft_selectbox"
+        )
+        
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            if st.button("📂 載入選取草稿", use_container_width=True):
+                target_file = saved_drafts[selected_draft_title]
+                if os.path.exists(target_file):
+                    with open(target_file, "rb") as f:
+                        data = pickle.load(f)
+                        st.session_state['records'] = data.get("records", [])
+                        st.session_state['job_title'] = data.get("job_title", selected_draft_title)
+                    st.success(f"成功載入【{selected_draft_title}】！")
+                    st.rerun()
+        
+        with btn_col2:
+            if st.button("🗑️ 刪除草稿", use_container_width=True):
+                target_file = saved_drafts[selected_draft_title]
+                if os.path.exists(target_file):
+                    os.remove(target_file)
+                    st.success(f"已刪除【{selected_draft_title}】草稿！")
+                    st.rerun()
+    else:
+        st.info("目前伺服器內未有任何暫存草稿。")
 
 st.divider()
 
@@ -96,7 +129,7 @@ def get_grouped_records():
         grouped[key].append((idx, rec))
     return grouped
 
-# --- 4. 新增現場記錄 ---
+# --- 3. 新增現場記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
 floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)")
@@ -157,7 +190,7 @@ with col_btn2:
 
 st.divider()
 
-# --- 5. 顯示已記錄清單 ---
+# --- 4. 顯示已記錄清單 ---
 st.subheader("📋 今日已記錄項目 (已自動分類)")
 grouped_data = get_grouped_records()
 
@@ -193,7 +226,7 @@ else:
 
 st.divider()
 
-# --- 6. 一鍵生成 Word 報告 ---
+# --- 5. 一鍵生成 Word 報告 ---
 st.subheader("3️⃣ 匯出報告")
 if st.button("📥 一鍵生成 Word 報告"):
     if len(st.session_state['records']) == 0:
