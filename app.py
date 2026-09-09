@@ -53,69 +53,72 @@ if 'uploader_key' not in st.session_state:
 if 'job_title' not in st.session_state:
     st.session_state['job_title'] = ""
 
-# --- 2. 設定 Job Title 與 暫存/載入管理 ---
+# --- 2. 項目基本資料 & 草稿管理 (極簡對稱 UI) ---
 st.subheader("📌 項目基本資料 & 草稿管理")
 
-job_title = st.text_input(
-    "Job Title / 工程項目名稱", 
-    value=st.session_state['job_title'], 
-    placeholder="例如: Regent Hotel F3 改善工程"
-)
-st.session_state['job_title'] = job_title
+tab_save, tab_load = st.tabs(["💾 新建 / 暫存目前 Job", "📂 載入 / 管理舊草稿"])
 
-safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
-DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
-
-col_save, col_load_ui = st.columns([1, 1.2])
-
-with col_save:
-    st.markdown("**💾 暫存目前工作**")
-    if st.button("💾 暫存此 Job 草稿", use_container_width=True):
-        if not safe_job:
-            st.warning("請先輸入 Job Title，先可以進行專屬暫存！")
-        elif len(st.session_state['records']) > 0:
-            with open(DRAFT_FILE, "wb") as f:
-                pickle.dump({
-                    "job_title": job_title,
-                    "records": st.session_state['records']
-                }, f)
-            st.success(f"已成功暫存【{job_title}】！")
-            st.rerun()
-        else:
-            st.warning("目前未有記錄可以暫存。")
-
-with col_load_ui:
-    st.markdown("**📂 載入已有的 Job 草稿**")
-    saved_drafts = get_saved_drafts()
-    
-    if saved_drafts:
-        selected_draft_title = st.selectbox(
-            "揀選要繼續的 Job", 
-            options=list(saved_drafts.keys()),
-            key="draft_selectbox"
+# --- TAB 1: 新建與暫存 ---
+with tab_save:
+    with st.container(border=True):
+        job_title = st.text_input(
+            "Job Title / 工程項目名稱", 
+            value=st.session_state['job_title'], 
+            placeholder="例如: Regent Hotel F3 改善工程",
+            key="main_job_title_input"
         )
+        st.session_state['job_title'] = job_title
+
+        safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
+        DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
+
+        if st.button("💾 暫存此 Job 草稿", use_container_width=True, type="primary"):
+            if not safe_job:
+                st.warning("請先輸入 Job Title，先可以進行專屬暫存！")
+            elif len(st.session_state['records']) > 0:
+                with open(DRAFT_FILE, "wb") as f:
+                    pickle.dump({
+                        "job_title": job_title,
+                        "records": st.session_state['records']
+                    }, f)
+                st.success(f"已成功暫存【{job_title}】！")
+                st.rerun()
+            else:
+                st.warning("目前未有記錄可以暫存。")
+
+# --- TAB 2: 載入與管理草稿 ---
+with tab_load:
+    with st.container(border=True):
+        saved_drafts = get_saved_drafts()
         
-        btn_col1, btn_col2 = st.columns(2)
-        with btn_col1:
-            if st.button("📂 載入選取草稿", use_container_width=True):
-                target_file = saved_drafts[selected_draft_title]
-                if os.path.exists(target_file):
-                    with open(target_file, "rb") as f:
-                        data = pickle.load(f)
-                        st.session_state['records'] = data.get("records", [])
-                        st.session_state['job_title'] = data.get("job_title", selected_draft_title)
-                    st.success(f"成功載入【{selected_draft_title}】！")
-                    st.rerun()
-        
-        with btn_col2:
-            if st.button("🗑️ 刪除草稿", use_container_width=True):
-                target_file = saved_drafts[selected_draft_title]
-                if os.path.exists(target_file):
-                    os.remove(target_file)
-                    st.success(f"已刪除【{selected_draft_title}】草稿！")
-                    st.rerun()
-    else:
-        st.info("目前伺服器內未有任何暫存草稿。")
+        if saved_drafts:
+            selected_draft_title = st.selectbox(
+                "揀選要繼續或刪除的 Job 草稿", 
+                options=list(saved_drafts.keys()),
+                key="draft_selectbox"
+            )
+            
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                if st.button("📂 載入此草稿", use_container_width=True, type="primary"):
+                    target_file = saved_drafts[selected_draft_title]
+                    if os.path.exists(target_file):
+                        with open(target_file, "rb") as f:
+                            data = pickle.load(f)
+                            st.session_state['records'] = data.get("records", [])
+                            st.session_state['job_title'] = data.get("job_title", selected_draft_title)
+                        st.success(f"成功載入【{selected_draft_title}】！")
+                        st.rerun()
+            
+            with btn_col2:
+                if st.button("🗑️ 刪除此草稿", use_container_width=True):
+                    target_file = saved_drafts[selected_draft_title]
+                    if os.path.exists(target_file):
+                        os.remove(target_file)
+                        st.success(f"已刪除【{selected_draft_title}】草稿！")
+                        st.rerun()
+        else:
+            st.info("目前伺服器內未有任何暫存草稿。")
 
 st.divider()
 
@@ -147,7 +150,7 @@ photos = st.file_uploader(
 col_btn1, col_btn2 = st.columns([1, 1])
 
 with col_btn1:
-    if st.button("➕ 新增到今日清單", use_container_width=True):
+    if st.button("➕ 新增到今日清單", use_container_width=True, type="primary"):
         if photos:
             success_count = 0
             f_val = floor.strip() if floor else ""
@@ -218,8 +221,10 @@ if len(grouped_data) > 0:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ 清空所有記錄"):
         st.session_state['records'] = []
-        if os.path.exists(DRAFT_FILE):
-            os.remove(DRAFT_FILE)
+        safe_job_name = "".join(c for c in st.session_state['job_title'] if c.isalnum() or c in ('_', '-')).strip()
+        curr_draft = f"draft_{safe_job_name}.pkl" if safe_job_name else "draft_default.pkl"
+        if os.path.exists(curr_draft):
+            os.remove(curr_draft)
         st.rerun()
 else:
     st.info("暫時未有記錄，請喺上面新增。")
@@ -228,7 +233,7 @@ st.divider()
 
 # --- 5. 一鍵生成 Word 報告 ---
 st.subheader("3️⃣ 匯出報告")
-if st.button("📥 一鍵生成 Word 報告"):
+if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_width=True):
     if len(st.session_state['records']) == 0:
         st.warning("請先新增至少一個記錄先可以出 Report！")
     else:
@@ -240,7 +245,7 @@ if st.button("📥 一鍵生成 Word 報告"):
             section.left_margin = Inches(0.5)
             section.right_margin = Inches(0.5)
 
-        display_title = job_title.strip() if job_title.strip() != "" else "Unnamed Project"
+        display_title = st.session_state['job_title'].strip() if st.session_state['job_title'].strip() != "" else "Unnamed Project"
 
         header_p = doc.add_paragraph()
         header_p.paragraph_format.space_after = Pt(6)
@@ -335,7 +340,8 @@ if st.button("📥 一鍵生成 Word 報告"):
             label="💾 點擊下載 Word 報告 (.docx)",
             data=buffer,
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
         )
 
 st.markdown("---")
