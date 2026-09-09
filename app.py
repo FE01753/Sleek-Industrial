@@ -34,11 +34,14 @@ job_title = st.text_input("Job Title / 工程項目名稱", value="", placeholde
 
 st.divider()
 
-# --- 1. 初始化 Session State 暫存記錄 ---
+# --- 1. 初始化 Session State (暫存記錄 + Uploader Key) ---
 if 'records' not in st.session_state:
     st.session_state['records'] = []
 
-# 輔助函式：將 records 依 (Floor, Category) 分組
+if 'uploader_key' not in st.session_state:
+    st.session_state['uploader_key'] = 0
+
+# 輔助函式：將 records 依 (Floor, Category) 自動分組
 def get_grouped_records():
     grouped = defaultdict(list)
     for idx, rec in enumerate(st.session_state['records']):
@@ -56,46 +59,63 @@ room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例�
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 
-photos = st.file_uploader("拍攝或上傳現場相片 (可一次選取多張)", type=['jpg', 'jpeg', 'png', 'heic'], accept_multiple_files=True)
+# 📸 使用動態 Key 實現自動清空與手動重置
+photos = st.file_uploader(
+    "拍攝或上傳現場相片 (可一次選取多張)", 
+    type=['jpg', 'jpeg', 'png', 'heic'], 
+    accept_multiple_files=True,
+    key=f"uploader_{st.session_state['uploader_key']}"
+)
 
-if st.button("➕ 新增到今日清單"):
-    if photos:
-        success_count = 0
-        f_val = floor.strip() if floor else ""
-        r_val = room.strip() if room else ""
-        rem_val = remarks.strip() if remarks else ""
-        
-        for p in photos:
-            try:
-                img = Image.open(p)
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    img = img.convert('RGB')
-                
-                photo_bytes = io.BytesIO()
-                img.save(photo_bytes, format='JPEG', quality=90)
-                photo_bytes.seek(0)
-                photo_bytes.name = "photo.jpg"
-                
-                st.session_state['records'].append({
-                    "floor": f_val,
-                    "room": r_val,
-                    "category": category,
-                    "remarks": rem_val,
-                    "photo": photo_bytes
-                })
-                success_count += 1
-            except Exception as e:
-                st.error(f"相片 {p.name} 處理失敗: {e}")
-        
-        if success_count > 0:
-            st.success(f"成功新增 {success_count} 張相片！已自動依樓層與類別歸類。")
-            st.rerun()
-    else:
-        st.warning("請上傳或拍攝至少一張現場相片！")
+# 橫向排列按鈕
+col_btn1, col_btn2 = st.columns([1, 1])
+
+with col_btn1:
+    if st.button("➕ 新增到今日清單", use_container_width=True):
+        if photos:
+            success_count = 0
+            f_val = floor.strip() if floor else ""
+            r_val = room.strip() if room else ""
+            rem_val = remarks.strip() if remarks else ""
+            
+            for p in photos:
+                try:
+                    img = Image.open(p)
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        img = img.convert('RGB')
+                    
+                    photo_bytes = io.BytesIO()
+                    img.save(photo_bytes, format='JPEG', quality=90)
+                    photo_bytes.seek(0)
+                    photo_bytes.name = "photo.jpg"
+                    
+                    st.session_state['records'].append({
+                        "floor": f_val,
+                        "room": r_val,
+                        "category": category,
+                        "remarks": rem_val,
+                        "photo": photo_bytes
+                    })
+                    success_count += 1
+                except Exception as e:
+                    st.error(f"相片 {p.name} 處理失敗: {e}")
+            
+            if success_count > 0:
+                # 成功新增後自動更新 Key 以重置相片欄位
+                st.session_state['uploader_key'] += 1
+                st.success(f"成功新增 {success_count} 張相片！相片區域已自動清空。")
+                st.rerun()
+        else:
+            st.warning("請上傳或拍攝至少一張現場相片！")
+
+with col_btn2:
+    if st.button("🧹 清空相片 / 重置", use_container_width=True):
+        st.session_state['uploader_key'] += 1
+        st.rerun()
 
 st.divider()
 
-# --- 3. 顯示已記錄清單 (自動 Grouping 顯示) ---
+# --- 3. 顯示已記錄清單 (自動依樓層/類別 Grouping) ---
 st.subheader("📋 今日已記錄項目 (已自動分類)")
 grouped_data = get_grouped_records()
 
@@ -124,7 +144,7 @@ else:
 
 st.divider()
 
-# --- 4. 一鍵生成 Word 報告 (分組版 2x3 Grid) ---
+# --- 4. 一鍵生成 Word 報告 (自動分組 + 2x3 Grid + 黑色相框) ---
 st.subheader("3️⃣ 匯出報告")
 if st.button("📥 一鍵生成 Word 報告"):
     if len(st.session_state['records']) == 0:
@@ -132,7 +152,7 @@ if st.button("📥 一鍵生成 Word 報告"):
     else:
         doc = Document()
 
-        # 窄邊距設定
+        # 窄邊距設定 (Top/Bottom/Left/Right)
         for section in doc.sections:
             section.top_margin = Inches(0.4)
             section.bottom_margin = Inches(0.4)
@@ -152,12 +172,11 @@ if st.button("📥 一鍵生成 Word 報告"):
         r_date.font.size = Pt(10)
         r_date.font.color.rgb = RGBColor(100, 100, 100)
 
-        # 依 Group 生成報告內容
+        # 依 Group 生成內容
         cols_per_row = 2
-        global_card_count = 0  # 追蹤總相片數用作 6 張自動分頁
+        global_card_count = 0  # 控制 6 張自動分頁
 
         for (group_floor, group_cat), items in grouped_data.items():
-            # 寫入 Group 分類小標題
             group_p = doc.add_paragraph()
             group_p.paragraph_format.space_before = Pt(8)
             group_p.paragraph_format.space_after = Pt(4)
@@ -184,7 +203,7 @@ if st.button("📥 一鍵生成 Word 報告"):
                         orig_idx, rec = items[item_sub_idx]
                         global_card_count += 1
 
-                        # 黑色相框邊框
+                        # 設置外邊框 (相框效果)
                         set_cell_border(cell, color="000000", sz="6", val="single")
 
                         p = cell.paragraphs[0]
@@ -199,7 +218,7 @@ if st.button("📥 一鍵生成 Word 報告"):
                         except Exception:
                             p.add_run("[相片載入失敗]")
 
-                        # 2. 插入文字 (已隱藏項目編號，專注顯示區域及備忘)
+                        # 2. 插入文字 (不顯示項目流水號)
                         p_txt = cell.add_paragraph()
                         p_txt.paragraph_format.space_before = Pt(2)
                         p_txt.paragraph_format.space_after = Pt(4)
