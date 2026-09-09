@@ -175,10 +175,18 @@ if st.button("📥 一鍵生成 Word 報告"):
         # 依 Group 生成內容
         cols_per_row = 2
         global_card_count = 0  # 控制 6 張自動分頁
+        group_index = 0        # 記錄分類組數
 
         for (group_floor, group_cat), items in grouped_data.items():
+            # 第二個記錄項目 (Group) 開始自動換新頁，避免標題卡在上一頁底部
+            if group_index > 0:
+                doc.add_page_break()
+                global_card_count = 0  # 換頁後計數重置
+            
+            group_index += 1
+
             group_p = doc.add_paragraph()
-            group_p.paragraph_format.space_before = Pt(8)
+            group_p.paragraph_format.space_before = Pt(4)
             group_p.paragraph_format.space_after = Pt(4)
             r_grp = group_p.add_run(f"【 樓層: {group_floor}  |  工程類別: {group_cat} 】")
             r_grp.bold = True
@@ -211,28 +219,34 @@ if st.button("📥 一鍵生成 Word 報告"):
                         p.paragraph_format.space_before = Pt(2)
                         p.paragraph_format.space_after = Pt(2)
 
-                        # 1. 插入相片
+                        # 1. 插入相片：固定高度 (2.2 Inches)，令直相與橫相高度一致
                         try:
                             rec['photo'].seek(0)
-                            p.add_run().add_picture(rec['photo'], width=Inches(3.2))
+                            p.add_run().add_picture(rec['photo'], height=Inches(2.2))
                         except Exception:
                             p.add_run("[相片載入失敗]")
 
-                        # 2. 插入文字 (不顯示項目流水號)
-                        p_txt = cell.add_paragraph()
-                        p_txt.paragraph_format.space_before = Pt(2)
-                        p_txt.paragraph_format.space_after = Pt(4)
-                        p_txt.paragraph_format.line_spacing = 1.0
+                        # 2. 插入文字 (無填寫則完全隱藏)
+                        has_room = bool(rec['room'])
+                        has_remarks = bool(rec['remarks'])
 
-                        if rec['room']:
-                            r_room = p_txt.add_run(f"區域: {rec['room']}\n")
-                            r_room.bold = True
-                            r_room.font.size = Pt(9)
+                        if has_room or has_remarks:
+                            p_txt = cell.add_paragraph()
+                            p_txt.paragraph_format.space_before = Pt(2)
+                            p_txt.paragraph_format.space_after = Pt(4)
+                            p_txt.paragraph_format.line_spacing = 1.0
 
-                        remark_text = rec['remarks'] if rec['remarks'] else "無工作備忘"
-                        r_rem = p_txt.add_run(f"備忘: {remark_text}")
-                        r_rem.font.size = Pt(8.5)
-                        r_rem.font.color.rgb = RGBColor(50, 50, 50)
+                            if has_room:
+                                r_room = p_txt.add_run(f"區域: {rec['room']}")
+                                r_room.bold = True
+                                r_room.font.size = Pt(9)
+                                if has_remarks:
+                                    p_txt.add_run("\n")
+
+                            if has_remarks:
+                                r_rem = p_txt.add_run(f"備忘: {rec['remarks']}")
+                                r_rem.font.size = Pt(8.5)
+                                r_rem.font.color.rgb = RGBColor(50, 50, 50)
 
                     else:
                         set_cell_border(cell, color="FFFFFF", sz="0", val="none")
