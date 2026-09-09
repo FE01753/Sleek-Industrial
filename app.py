@@ -14,8 +14,6 @@ from docx.oxml.ns import nsdecls
 
 st.set_page_config(page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered")
 
-DRAFT_FILE = "draft_records.pkl"
-
 def set_cell_border(cell, color="000000", sz="6", val="single"):
     tcPr = cell._element.get_or_add_tcPr()
     tcBorders = parse_xml(
@@ -30,41 +28,49 @@ def set_cell_border(cell, color="000000", sz="6", val="single"):
 
 st.title("📸 Sleek-Industrial 進度記錄器")
 
-# --- 暫存 / 載入草稿功能區域 ---
+# --- 1. 設定 Job Title (作為草稿獨立識別) ---
+st.subheader("📌 項目基本資料")
+job_title = st.text_input("Job Title / 工程項目名稱", value=st.session_state.get('job_title_input', ''), key='job_title_input', placeholder="例如: Regent Hotel F3 改善工程")
+
+# 根據 Job Title 生成專屬草稿檔名
+safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
+DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
+
+st.divider()
+
+# --- 暫存 / 載入草稿功能區域 (按 Job Title 分離) ---
 col_s1, col_s2 = st.columns(2)
 with col_s1:
-    if st.button("💾 暫存草稿 (防止 Refresh)", use_container_width=True):
-        if 'records' in st.session_state and len(st.session_state['records']) > 0:
+    if st.button("💾 暫存此 Job 草稿", use_container_width=True):
+        if not safe_job:
+            st.warning("請先輸入 Job Title / 工程項目名稱，先可以進行專屬暫存！")
+        elif 'records' in st.session_state and len(st.session_state['records']) > 0:
             with open(DRAFT_FILE, "wb") as f:
                 pickle.dump({
-                    "job_title": st.session_state.get('job_title_input', ''),
+                    "job_title": job_title,
                     "records": st.session_state['records']
                 }, f)
-            st.success("已成功暫存！就算重新整理網頁都可以載入返。")
+            st.success(f"已成功暫存【{job_title}】嘅草稿！")
         else:
             st.warning("目前未有記錄可以暫存。")
 
 with col_s2:
-    if st.button("📂 載入上次草稿", use_container_width=True):
-        if os.path.exists(DRAFT_FILE):
+    if st.button("📂 載入此 Job 草稿", use_container_width=True):
+        if not safe_job:
+            st.warning("請先輸入 Job Title / 工程項目名稱，先可以載入對應草稿！")
+        elif os.path.exists(DRAFT_FILE):
             with open(DRAFT_FILE, "rb") as f:
                 data = pickle.load(f)
                 st.session_state['records'] = data.get("records", [])
                 st.session_state['job_title_input'] = data.get("job_title", "")
-            st.success("成功載入上次草稿！")
+            st.success(f"成功載入【{job_title}】嘅草稿！")
             st.rerun()
         else:
-            st.info("搵唔到任何暫存草稿。")
+            st.info(f"搵唔到【{job_title}】嘅暫存草稿。")
 
 st.divider()
 
-# --- 0. 設定 Job Title ---
-st.subheader("📌 項目基本資料")
-job_title = st.text_input("Job Title / 工程項目名稱", value=st.session_state.get('job_title_input', ''), key='job_title_input', placeholder="例如: Regent Hotel F3 改善工程")
-
-st.divider()
-
-# --- 1. 初始化 Session State ---
+# --- 2. 初始化 Session State ---
 if 'records' not in st.session_state:
     st.session_state['records'] = []
 
@@ -81,7 +87,7 @@ def get_grouped_records():
         grouped[key].append((idx, rec))
     return grouped
 
-# --- 2. 新增現場記錄 ---
+# --- 3. 新增現場記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
 floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)")
@@ -142,13 +148,12 @@ with col_btn2:
 
 st.divider()
 
-# --- 3. 顯示已記錄清單 (未填寫區域自動隱藏) ---
+# --- 4. 顯示已記錄清單 ---
 st.subheader("📋 今日已記錄項目 (已自動分類)")
 grouped_data = get_grouped_records()
 
 if len(grouped_data) > 0:
     for (group_floor, group_room, group_cat), items in grouped_data.items():
-        # 動態組合標題，若 group_room 為空則不安插區域字串
         title_parts = [f"🏢 樓層: {group_floor}"]
         if group_room:
             title_parts.append(f"📍 區域: {group_room}")
@@ -179,7 +184,7 @@ else:
 
 st.divider()
 
-# --- 4. 一鍵生成 Word 報告 ---
+# --- 5. 一鍵生成 Word 報告 ---
 st.subheader("3️⃣ 匯出報告")
 if st.button("📥 一鍵生成 Word 報告"):
     if len(st.session_state['records']) == 0:
