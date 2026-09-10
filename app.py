@@ -5,7 +5,6 @@ import streamlit as st
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt, RGBColor
-from PIL import Image, ImageOps
 
 # -----------------------------------------------------------------------------
 # 1. 頁面基本配置
@@ -22,36 +21,7 @@ DRAFT_FILE = "site_drafts.json"
 
 
 # -----------------------------------------------------------------------------
-# 2. 核心功能：背景自動相片壓縮
-# -----------------------------------------------------------------------------
-def compress_image(uploaded_file, max_width=1200, quality=75):
-    """自動修正方向並壓縮圖片，將 2MB-8MB 的圖片降至約 200-300KB"""
-    img = Image.open(uploaded_file)
-
-    # 修正手機拍攝的方向問題 (EXIF Orientation)
-    try:
-        img = ImageOps.exif_transpose(img)
-    except Exception:
-        pass
-
-    # 轉為 RGB 模式以支援儲存為 JPEG
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-
-    # 按比例縮放尺寸
-    width, height = img.size
-    if width > max_width:
-        new_height = int(height * (max_width / width))
-        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
-    output_buffer = io.BytesIO()
-    img.save(output_buffer, format="JPEG", quality=quality, optimize=True)
-    output_buffer.seek(0)
-    return output_buffer
-
-
-# -----------------------------------------------------------------------------
-# 3. 草稿管理讀寫函數
+# 2. 草稿管理讀寫函數
 # -----------------------------------------------------------------------------
 def load_all_drafts():
     if os.path.exists(DRAFT_FILE):
@@ -65,7 +35,6 @@ def load_all_drafts():
 
 def save_draft(job_title, records):
     drafts = load_all_drafts()
-    # 照片轉為 bytes 儲存
     serializable_records = []
     for r in records:
         serializable_records.append(
@@ -91,7 +60,7 @@ def delete_draft(job_title):
 
 
 # -----------------------------------------------------------------------------
-# 4. Word 報告生成器 (.docx)
+# 3. Word 報告生成器 (.docx)
 # -----------------------------------------------------------------------------
 def generate_word_report(job_title, records):
     doc = Document()
@@ -145,7 +114,7 @@ def generate_word_report(job_title, records):
                 p_cell = cell.paragraphs[0]
                 p_cell.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-                # 插入壓縮後的圖片
+                # 直接插入原圖 (無壓縮)
                 img_stream = io.BytesIO(item["image_bytes"].getvalue())
                 p_cell.add_run().add_picture(img_stream, width=Inches(3.4))
 
@@ -164,7 +133,7 @@ def generate_word_report(job_title, records):
 
 
 # -----------------------------------------------------------------------------
-# 5. 主程式 Session 初始化
+# 4. 主程式 Session 初始化
 # -----------------------------------------------------------------------------
 if "records" not in st.session_state:
     st.session_state.records = []
@@ -174,7 +143,7 @@ if "job_title" not in st.session_state:
 st.title("📸 E&M 現場進度記錄器")
 
 # -----------------------------------------------------------------------------
-# 6. 頂部 Tab：草稿暫存與載入
+# 5. 頂部 Tab：草稿暫存與載入
 # -----------------------------------------------------------------------------
 tab1, tab2 = st.tabs(["💾 新建 / 暫存", "📂 載入 / 管理草稿"])
 
@@ -226,7 +195,7 @@ with tab2:
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 7. 現場輸入與相片上傳區
+# 6. 現場輸入與相片上傳區
 # -----------------------------------------------------------------------------
 st.subheader("➕ 新增現場紀錄")
 
@@ -249,26 +218,25 @@ if st.button("➕ 新增到今日清單", type="primary", use_container_width=Tr
     if not uploaded_files:
         st.error("請先選取或拍攝至少一張相片！")
     else:
-        with st.spinner("背景自動壓縮相片中..."):
-            for file in uploaded_files:
-                # ⚡ 核心功能：自動壓縮相片
-                compressed_buf = compress_image(file)
-                st.session_state.records.append(
-                    {
-                        "floor": floor,
-                        "area": area,
-                        "category": category,
-                        "remark": remark,
-                        "image_bytes": compressed_buf,
-                    }
-                )
+        for file in uploaded_files:
+            # 直接讀取原圖 Bytes
+            img_bytes = io.BytesIO(file.read())
+            st.session_state.records.append(
+                {
+                    "floor": floor,
+                    "area": area,
+                    "category": category,
+                    "remark": remark,
+                    "image_bytes": img_bytes,
+                }
+            )
         st.success(f"成功新增 {len(uploaded_files)} 張相片！")
         st.rerun()
 
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 8. 已新增紀錄展示與刪除整理
+# 7. 已新增紀錄展示與刪除整理
 # -----------------------------------------------------------------------------
 st.subheader(f"📋 已記錄列表 (共 {len(st.session_state.records)} 張)")
 
@@ -285,7 +253,7 @@ else:
 st.divider()
 
 # -----------------------------------------------------------------------------
-# 9. 匯出 Word 報告區
+# 8. 匯出 Word 報告區
 # -----------------------------------------------------------------------------
 if st.session_state.records:
     if st.button("📥 一鍵生成 Word 報告 (.docx)", type="primary", use_container_width=True):
