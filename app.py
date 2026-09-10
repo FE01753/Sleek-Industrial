@@ -1,353 +1,303 @@
 import io
+import json
 import os
-import glob
-import pickle
-from datetime import datetime
-from collections import defaultdict
-from PIL import Image
 import streamlit as st
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
+from docx.shared import Inches, Pt, RGBColor
+from PIL import Image, ImageOps
 
-st.set_page_config(page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered")
+# -----------------------------------------------------------------------------
+# 1. 頁面基本配置
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="E&M Progress Logger",
+    page_icon="📸",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 
-def set_cell_border(cell, color="000000", sz="6", val="single"):
-    tcPr = cell._element.get_or_add_tcPr()
-    tcBorders = parse_xml(
-        f'<w:tcBorders {nsdecls("w")}>\n'
-        f'  <w:top w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
-        f'  <w:left w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
-        f'  <w:bottom w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
-        f'  <w:right w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
-        '</w:tcBorders>'
-    )
-    tcPr.append(tcBorders)
+# 草稿暫存檔路徑
+DRAFT_FILE = "site_drafts.json"
 
-def get_saved_drafts():
-    """獲取目前所有已暫存的 Job 草稿清單"""
-    draft_files = glob.glob("draft_*.pkl")
-    draft_map = {}
-    for filepath in draft_files:
+
+# -----------------------------------------------------------------------------
+# 2. 核心功能：背景自動相片壓縮
+# -----------------------------------------------------------------------------
+def compress_image(uploaded_file, max_width=1200, quality=75):
+    """自動修正方向並壓縮圖片，將 2MB-8MB 的圖片降至約 200-300KB"""
+    img = Image.open(uploaded_file)
+
+    # 修正手機拍攝的方向問題 (EXIF Orientation)
+    try:
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        pass
+
+    # 轉為 RGB 模式以支援儲存為 JPEG
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    # 按比例縮放尺寸
+    width, height = img.size
+    if width > max_width:
+        new_height = int(height * (max_width / width))
+        img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+
+    output_buffer = io.BytesIO()
+    img.save(output_buffer, format="JPEG", quality=quality, optimize=True)
+    output_buffer.seek(0)
+    return output_buffer
+
+
+# -----------------------------------------------------------------------------
+# 3. 草稿管理讀寫函數
+# -----------------------------------------------------------------------------
+def load_all_drafts():
+    if os.path.exists(DRAFT_FILE):
         try:
-            with open(filepath, "rb") as f:
-                data = pickle.load(f)
-                j_title = data.get("job_title", filepath)
-                draft_map[j_title] = filepath
+            with open(DRAFT_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception:
-            pass
-    return draft_map
+            return {}
+    return {}
 
-st.title("📸 Sleek-Industrial 進度記錄器")
 
-# --- 1. 初始化 Session State ---
-if 'records' not in st.session_state:
-    st.session_state['records'] = []
-
-if 'uploader_key' not in st.session_state:
-    st.session_state['uploader_key'] = 0
-
-if 'job_title' not in st.session_state:
-    st.session_state['job_title'] = ""
-
-# --- 2. 項目基本資料 & 草稿管理 (極簡對稱 UI) ---
-st.subheader("📌 項目基本資料 & 草稿管理")
-
-tab_save, tab_load = st.tabs(["💾 新建 / 暫存目前 Job", "📂 載入 / 管理舊草稿"])
-
-# --- TAB 1: 新建與暫存 ---
-with tab_save:
-    with st.container(border=True):
-        job_title = st.text_input(
-            "Job Title / 工程項目名稱", 
-            value=st.session_state['job_title'], 
-            placeholder="例如: Regent Hotel F3 改善工程",
-            key="main_job_title_input"
+def save_draft(job_title, records):
+    drafts = load_all_drafts()
+    # 照片轉為 bytes 儲存
+    serializable_records = []
+    for r in records:
+        serializable_records.append(
+            {
+                "floor": r["floor"],
+                "area": r["area"],
+                "category": r["category"],
+                "remark": r["remark"],
+                "image_bytes": r["image_bytes"].getvalue(),
+            }
         )
-        st.session_state['job_title'] = job_title
+    drafts[job_title] = serializable_records
+    with open(DRAFT_FILE, "w", encoding="utf-8") as f:
+        json.dump(drafts, f, ensure_ascii=False, indent=2)
 
-        safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
-        DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
 
-        if st.button("💾 暫存此 Job 草稿", use_container_width=True, type="primary"):
-            if not safe_job:
-                st.warning("請先輸入 Job Title，先可以進行專屬暫存！")
-            elif len(st.session_state['records']) > 0:
-                with open(DRAFT_FILE, "wb") as f:
-                    pickle.dump({
-                        "job_title": job_title,
-                        "records": st.session_state['records']
-                    }, f)
-                st.success(f"已成功暫存【{job_title}】！")
-                st.rerun()
-            else:
-                st.warning("目前未有記錄可以暫存。")
+def delete_draft(job_title):
+    drafts = load_all_drafts()
+    if job_title in drafts:
+        del drafts[job_title]
+        with open(DRAFT_FILE, "w", encoding="utf-8") as f:
+            json.dump(drafts, f, ensure_ascii=False, indent=2)
 
-# --- TAB 2: 載入與管理草稿 ---
-with tab_load:
-    with st.container(border=True):
-        saved_drafts = get_saved_drafts()
-        
-        if saved_drafts:
-            selected_draft_title = st.selectbox(
-                "揀選要繼續或刪除的 Job 草稿", 
-                options=list(saved_drafts.keys()),
-                key="draft_selectbox"
-            )
-            
-            btn_col1, btn_col2 = st.columns(2)
-            with btn_col1:
-                if st.button("📂 載入此草稿", use_container_width=True, type="primary"):
-                    target_file = saved_drafts[selected_draft_title]
-                    if os.path.exists(target_file):
-                        with open(target_file, "rb") as f:
-                            data = pickle.load(f)
-                            st.session_state['records'] = data.get("records", [])
-                            st.session_state['job_title'] = data.get("job_title", selected_draft_title)
-                        st.success(f"成功載入【{selected_draft_title}】！")
-                        st.rerun()
-            
-            with btn_col2:
-                if st.button("🗑️ 刪除此草稿", use_container_width=True):
-                    target_file = saved_drafts[selected_draft_title]
-                    if os.path.exists(target_file):
-                        os.remove(target_file)
-                        st.success(f"已刪除【{selected_draft_title}】草稿！")
-                        st.rerun()
+
+# -----------------------------------------------------------------------------
+# 4. Word 報告生成器 (.docx)
+# -----------------------------------------------------------------------------
+def generate_word_report(job_title, records):
+    doc = Document()
+
+    # 設定標準窄邊框 (0.5 吋)
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
+    # 標頭 Title
+    p_title = doc.add_paragraph()
+    run_title = p_title.add_run(f"SITE PHOTO RECORD: {job_title}")
+    run_title.font.name = "Arial"
+    run_title.font.size = Pt(16)
+    run_title.font.bold = True
+    run_title.font.color.rgb = RGBColor(15, 23, 42)
+
+    # 分類數據 (按 樓層 > 區域 > 類別)
+    grouped = {}
+    for r in records:
+        key = f"{r['floor']} - {r['area']}"
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(r)
+
+    # 寫入內容
+    for loc, items in grouped.items():
+        p_loc = doc.add_paragraph()
+        p_loc.paragraph_format.space_before = Pt(12)
+        p_loc.paragraph_format.space_after = Pt(4)
+        run_loc = p_loc.add_run(f"📍 位置: {loc}")
+        run_loc.font.name = "Arial"
+        run_loc.font.size = Pt(12)
+        run_loc.font.bold = True
+        run_loc.font.color.rgb = RGBColor(37, 99, 235)
+
+        # 兩欄排版表格
+        table = doc.add_table(rows=0, cols=2)
+        table.autofit = False
+
+        # 每兩張相排一列
+        for i in range(0, len(items), 2):
+            row_cells = table.add_row().cells
+
+            for idx, item in enumerate(items[i : i + 2]):
+                cell = row_cells[idx]
+                cell.width = Inches(3.6)
+                p_cell = cell.paragraphs[0]
+                p_cell.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+                # 插入壓縮後的圖片
+                img_stream = io.BytesIO(item["image_bytes"].getvalue())
+                p_cell.add_run().add_picture(img_stream, width=Inches(3.4))
+
+                # 備註說明
+                p_desc = cell.add_paragraph()
+                p_desc.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                desc_text = f"[{item['category']}] {item['remark']}" if item["remark"] else f"[{item['category']}]"
+                run_desc = p_desc.add_run(desc_text)
+                run_desc.font.name = "Arial"
+                run_desc.font.size = Pt(9.5)
+
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+    return doc_io
+
+
+# -----------------------------------------------------------------------------
+# 5. 主程式 Session 初始化
+# -----------------------------------------------------------------------------
+if "records" not in st.session_state:
+    st.session_state.records = []
+if "job_title" not in st.session_state:
+    st.session_state.job_title = ""
+
+st.title("📸 E&M 現場進度記錄器")
+
+# -----------------------------------------------------------------------------
+# 6. 頂部 Tab：草稿暫存與載入
+# -----------------------------------------------------------------------------
+tab1, tab2 = st.tabs(["💾 新建 / 暫存", "📂 載入 / 管理草稿"])
+
+with tab1:
+    job_input = st.text_input("Job Title / 工程項目名稱", value=st.session_state.job_title, placeholder="例: Regent Hotel F3 改善工程")
+    st.session_state.job_title = job_input
+
+    if st.button("💾 暫存目前紀錄", use_container_width=True):
+        if not st.session_state.job_title:
+            st.error("請先輸入 Job Title 才可進行暫存！")
+        elif not st.session_state.records:
+            st.warning("目前沒有任何相片紀錄可供暫存。")
         else:
-            st.info("目前伺服器內未有任何暫存草稿。")
+            save_draft(st.session_state.job_title, st.session_state.records)
+            st.success(f"成功暫存草稿：{st.session_state.job_title}")
 
-st.divider()
-
-def get_grouped_records():
-    grouped = defaultdict(list)
-    for idx, rec in enumerate(st.session_state['records']):
-        f_val = rec['floor'] if rec['floor'] else "未註明樓層"
-        r_val = rec['room'] if rec['room'] else ""
-        cat_val = rec['category']
-        key = (f_val, r_val, cat_val)
-        grouped[key].append((idx, rec))
-    return grouped
-
-# --- 3. 新增現場記錄 ---
-st.subheader("1️⃣ 新增現場記錄")
-
-floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)")
-room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例如: Function Room A / 掣房 (可留空)")
-category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
-remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
-
-photos = st.file_uploader(
-    "拍攝或上傳現場相片 (可一次選取多張)", 
-    type=['jpg', 'jpeg', 'png', 'heic'], 
-    accept_multiple_files=True,
-    key=f"uploader_{st.session_state['uploader_key']}"
-)
-
-col_btn1, col_btn2 = st.columns([1, 1])
-
-with col_btn1:
-    if st.button("➕ 新增到今日清單", use_container_width=True, type="primary"):
-        if photos:
-            success_count = 0
-            f_val = floor.strip() if floor else ""
-            r_val = room.strip() if room else ""
-            rem_val = remarks.strip() if remarks else ""
-            
-            for p in photos:
-                try:
-                    img = Image.open(p)
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        img = img.convert('RGB')
-                    
-                    photo_bytes = io.BytesIO()
-                    img.save(photo_bytes, format='JPEG', quality=90)
-                    photo_bytes.seek(0)
-                    photo_bytes.name = "photo.jpg"
-                    
-                    st.session_state['records'].append({
-                        "floor": f_val,
-                        "room": r_val,
-                        "category": category,
-                        "remarks": rem_val,
-                        "photo": photo_bytes
-                    })
-                    success_count += 1
-                except Exception as e:
-                    st.error(f"相片 {p.name} 處理失敗: {e}")
-            
-            if success_count > 0:
-                st.session_state['uploader_key'] += 1
-                st.success(f"成功新增 {success_count} 張相片！")
-                st.rerun()
-        else:
-            st.warning("請上傳或拍攝至少一張現場相片！")
-
-with col_btn2:
-    if st.button("🧹 清空相片 / 重置", use_container_width=True):
-        st.session_state['uploader_key'] += 1
-        st.rerun()
-
-st.divider()
-
-# --- 4. 顯示已記錄清單 ---
-st.subheader("📋 今日已記錄項目 (已自動分類)")
-grouped_data = get_grouped_records()
-
-if len(grouped_data) > 0:
-    for (group_floor, group_room, group_cat), items in grouped_data.items():
-        title_parts = [f"🏢 樓層: {group_floor}"]
-        if group_room:
-            title_parts.append(f"📍 區域: {group_room}")
-        title_parts.append(f"🔧 類別: {group_cat} (共 {len(items)} 張)")
-        
-        title_str = " | ".join(title_parts)
-        
-        with st.expander(title_str, expanded=True):
-            cols = st.columns(3)
-            for sub_idx, (orig_idx, rec) in enumerate(items):
-                with cols[sub_idx % 3]:
-                    rec['photo'].seek(0)
-                    st.image(rec['photo'], use_container_width=True)
-                    if rec['remarks']:
-                        st.write(f"📝 {rec['remarks']}")
-                    if st.button("🗑️ 刪除", key=f"del_{orig_idx}"):
-                        st.session_state['records'].pop(orig_idx)
-                        st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🗑️ 清空所有記錄"):
-        st.session_state['records'] = []
-        safe_job_name = "".join(c for c in st.session_state['job_title'] if c.isalnum() or c in ('_', '-')).strip()
-        curr_draft = f"draft_{safe_job_name}.pkl" if safe_job_name else "draft_default.pkl"
-        if os.path.exists(curr_draft):
-            os.remove(curr_draft)
-        st.rerun()
-else:
-    st.info("暫時未有記錄，請喺上面新增。")
-
-st.divider()
-
-# --- 5. 一鍵生成 Word 報告 ---
-st.subheader("3️⃣ 匯出報告")
-if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_width=True):
-    if len(st.session_state['records']) == 0:
-        st.warning("請先新增至少一個記錄先可以出 Report！")
+with tab2:
+    all_drafts = load_all_drafts()
+    if not all_drafts:
+        st.info("目前沒有已儲存的草稿。")
     else:
-        doc = Document()
+        selected_draft = st.selectbox("選擇要載入的草稿", list(all_drafts.keys()))
+        col_load, col_del = st.columns(2)
 
-        for section in doc.sections:
-            section.top_margin = Inches(0.4)
-            section.bottom_margin = Inches(0.4)
-            section.left_margin = Inches(0.5)
-            section.right_margin = Inches(0.5)
+        with col_load:
+            if st.button("📂 載入此草稿", use_container_width=True):
+                draft_data = all_drafts[selected_draft]
+                st.session_state.job_title = selected_draft
+                st.session_state.records = []
+                for item in draft_data:
+                    st.session_state.records.append(
+                        {
+                            "floor": item["floor"],
+                            "area": item["area"],
+                            "category": item["category"],
+                            "remark": item["remark"],
+                            "image_bytes": io.BytesIO(bytes(item["image_bytes"])),
+                        }
+                    )
+                st.success(f"已成功載入草稿：{selected_draft}")
+                st.rerun()
 
-        display_title = st.session_state['job_title'].strip() if st.session_state['job_title'].strip() != "" else "Unnamed Project"
+        with col_del:
+            if st.button("🗑️ 刪除此草稿", type="primary", use_container_width=True):
+                delete_draft(selected_draft)
+                st.success(f"已刪除草稿：{selected_draft}")
+                st.rerun()
 
-        header_p = doc.add_paragraph()
-        header_p.paragraph_format.space_after = Pt(6)
-        r_title = header_p.add_run(f"Job Title: {display_title}")
-        r_title.bold = True
-        r_title.font.size = Pt(12)
+st.divider()
 
-        r_date = header_p.add_run(f"  |  Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        r_date.font.size = Pt(10)
-        r_date.font.color.rgb = RGBColor(100, 100, 100)
+# -----------------------------------------------------------------------------
+# 7. 現場輸入與相片上傳區
+# -----------------------------------------------------------------------------
+st.subheader("➕ 新增現場紀錄")
 
-        cols_per_row = 2
-        global_card_count = 0
-        group_index = 0
+col1, col2 = st.columns(2)
+with col1:
+    floor = st.text_input("樓層 (Floor)", value="1F")
+with col2:
+    area = st.text_input("區域/位置 (Area)", value="Function Room")
 
-        for (group_floor, group_room, group_cat), items in grouped_data.items():
-            if group_index > 0:
-                doc.add_page_break()
-                global_card_count = 0
-            
-            group_index += 1
+category = st.selectbox("工程類別 (Category)", ["AC", "FS", "P&D", "EL", "OTHER"])
+remark = st.text_input("備註說明 (Remark - 可不填)", placeholder="例: 完成管道鋪設")
 
-            group_p = doc.add_paragraph()
-            group_p.paragraph_format.space_before = Pt(4)
-            group_p.paragraph_format.space_after = Pt(4)
-            
-            header_text = f"【 樓層: {group_floor}"
-            if group_room:
-                header_text += f"  |  區域: {group_room}"
-            header_text += f"  |  工程類別: {group_cat} 】"
-
-            r_grp = group_p.add_run(header_text)
-            r_grp.bold = True
-            r_grp.font.size = Pt(11)
-            r_grp.font.color.rgb = RGBColor(0, 51, 102)
-
-            total_items = len(items)
-
-            for r_idx in range(0, total_items, cols_per_row):
-                if global_card_count > 0 and global_card_count % 6 == 0:
-                    doc.add_page_break()
-
-                table = doc.add_table(rows=1, cols=2)
-                table.alignment = WD_TABLE_ALIGNMENT.CENTER
-                hdr_cells = table.rows[0].cells
-
-                for c_idx in range(cols_per_row):
-                    item_sub_idx = r_idx + c_idx
-                    cell = hdr_cells[c_idx]
-
-                    if item_sub_idx < total_items:
-                        orig_idx, rec = items[item_sub_idx]
-                        global_card_count += 1
-
-                        set_cell_border(cell, color="000000", sz="6", val="single")
-
-                        p = cell.paragraphs[0]
-                        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        p.paragraph_format.space_before = Pt(2)
-                        p.paragraph_format.space_after = Pt(2)
-
-                        try:
-                            rec['photo'].seek(0)
-                            p.add_run().add_picture(rec['photo'], height=Inches(2.2))
-                        except Exception:
-                            p.add_run("[相片載入失敗]")
-
-                        if rec['remarks']:
-                            p_txt = cell.add_paragraph()
-                            p_txt.paragraph_format.space_before = Pt(2)
-                            p_txt.paragraph_format.space_after = Pt(4)
-                            p_txt.paragraph_format.line_spacing = 1.0
-
-                            r_rem = p_txt.add_run(f"備忘: {rec['remarks']}")
-                            r_rem.font.size = Pt(8.5)
-                            r_rem.font.color.rgb = RGBColor(50, 50, 50)
-
-                    else:
-                        set_cell_border(cell, color="FFFFFF", sz="0", val="none")
-
-                spacer = doc.add_paragraph()
-                spacer.paragraph_format.space_before = Pt(0)
-                spacer.paragraph_format.space_after = Pt(4)
-
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-
-        safe_job_title = "".join(c for c in display_title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
-
-        st.download_button(
-            label="💾 點擊下載 Word 報告 (.docx)",
-            data=buffer,
-            file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
-        )
-
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: gray; font-size: 14px;'>"
-    "🛠️ <b>Design by nikki 💅</b>"
-    "</div>", 
-    unsafe_allow_html=True
+uploaded_files = st.file_uploader(
+    "上傳現場相片 (支援多張相片/即場拍攝)",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True,
 )
+
+if st.button("➕ 新增到今日清單", type="primary", use_container_width=True):
+    if not uploaded_files:
+        st.error("請先選取或拍攝至少一張相片！")
+    else:
+        with st.spinner("背景自動壓縮相片中..."):
+            for file in uploaded_files:
+                # ⚡ 核心功能：自動壓縮相片
+                compressed_buf = compress_image(file)
+                st.session_state.records.append(
+                    {
+                        "floor": floor,
+                        "area": area,
+                        "category": category,
+                        "remark": remark,
+                        "image_bytes": compressed_buf,
+                    }
+                )
+        st.success(f"成功新增 {len(uploaded_files)} 張相片！")
+        st.rerun()
+
+st.divider()
+
+# -----------------------------------------------------------------------------
+# 8. 已新增紀錄展示與刪除整理
+# -----------------------------------------------------------------------------
+st.subheader(f"📋 已記錄列表 (共 {len(st.session_state.records)} 張)")
+
+if not st.session_state.records:
+    st.info("目前尚未新增任何紀錄。")
+else:
+    for idx, rec in enumerate(st.session_state.records):
+        with st.expander(f"#{idx+1} | [{rec['floor']} - {rec['area']}] [{rec['category']}] {rec['remark']}"):
+            st.image(rec["image_bytes"], use_column_width=True)
+            if st.button(f"🗑️ 刪除此張相片", key=f"del_{idx}"):
+                st.session_state.records.pop(idx)
+                st.rerun()
+
+st.divider()
+
+# -----------------------------------------------------------------------------
+# 9. 匯出 Word 報告區
+# -----------------------------------------------------------------------------
+if st.session_state.records:
+    if st.button("📥 一鍵生成 Word 報告 (.docx)", type="primary", use_container_width=True):
+        if not st.session_state.job_title:
+            st.error("請在頂部輸入 Job Title 後再生成報告！")
+        else:
+            with st.spinner("正在排版並生成 Word 報告..."):
+                doc_file = generate_word_report(st.session_state.job_title, st.session_state.records)
+                st.download_button(
+                    label="💾 點擊下載 Word 報告 (.docx)",
+                    data=doc_file,
+                    file_name=f"{st.session_state.job_title}_Photo_Report.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                )
