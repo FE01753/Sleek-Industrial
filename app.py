@@ -1,4 +1,3 @@
-import base64
 import glob
 import io
 import os
@@ -17,29 +16,6 @@ import streamlit as st
 st.set_page_config(
     page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered"
 )
-
-# 遠東工程有限公司 Logo (已轉換為完整 Base64，無需上傳任何圖檔)
-FAR_EAST_LOGO_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAYUAAACACAYAAADU5NsnAAAACXBIWXMAAAsTAAALEwEAmpwYAAA"
-    "AAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAB3PSURBVHgB7d0LjB3XfRjg37m33Ede1mJb"
-    "vkgkpUTLVCiRlm3Zll05kRTbiiXbSZO0aZO0sQ3Ehh3Uhh0YQZAESRIECJAACZAUSdrUSZK2CdoY"
-    "dmIHsR3Jki0rtmRb8iPJsmRJsnxL1mXve3vOfN43s/e++3GfuzNz7+48fwAgd/feuzv33DNz/vO9"
-    "cx3XdV0EEUK4YkynfyJCCCFcC4mCCCCEEM6PBAECCCEE4CRAACGEAJwECCCMEEK4LhIEEEYIIVwb"
-    "CQIIL2mEEIaRIIAnEEII4S2RIIAQ3goI4YmRIECIIYQQIowEAYSoCSGEEIn4T3A/E4IhhPCmIIQQ"
-    "3jL43831kiCA8IZACCEEQgjhrcD19fX4/wIBAgjh1YQQQgg3RIIAQggh3BAJAoQ3FEIIIYSLIEEA"
-    "4WWGIIQQrh8JAoQYQQgh3BAJAggvI4QQ3pAQQrj8/06CACCGEEIIx0eCAMIIIYR3BwkCCCGEEMK1"
-    "kSBAeDkghBCGG0IIV4EEAQIhhBDC8ZEggPCmIIQQQjgfEgQQ3hAIIYQQjo8EAQghhBBCCC+EBAEC"
-    "CCGEEI4PCQIII4QQXksIIXwvEgQQ3hT+v/248x+z/j3m/U8IIXwqCQCENwVCCCGEV/L/2S98_BASE64_FULL"
-)
-
-
-def get_logo_bytes():
-  """將內嵌 Base64 Logo 轉為 Bytes 流"""
-  try:
-    img_data = base64.b64decode(FAR_EAST_LOGO_B64)
-    return io.BytesIO(img_data)
-  except Exception as e:
-    return None
 
 
 def set_cell_border(cell, color="000000", sz="6", val="single"):
@@ -294,6 +270,20 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
       section.right_margin = Inches(0.5)
 
       # -------------------------------------------------------------
+      # ✨ 頁首設置 (Header): 放公司名稱文字 (靠右)
+      # -------------------------------------------------------------
+      header = section.header
+      header_p = header.paragraphs[0]
+      header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+      r_company = header_p.add_run(
+          "Far East Engineering Services Ltd\n遠東工程服務有限公司"
+      )
+      r_company.bold = True
+      r_company.font.size = Pt(9.5)
+      r_company.font.color.rgb = RGBColor(0, 51, 102)  # 深藍色字體
+
+      # -------------------------------------------------------------
       # ✨ 頁尾設置 (Footer): 動態頁碼
       # -------------------------------------------------------------
       footer = section.footer
@@ -305,18 +295,6 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
       footer_run.font.color.rgb = RGBColor(128, 128, 128)
       add_page_number(footer_run)
 
-    # -------------------------------------------------------------
-    # ✨ 頁首內容: 直接插入 Logo 圖檔於內文頂部 (完全對齊截圖樣式)
-    # -------------------------------------------------------------
-    logo_bio = get_logo_bytes()
-    if logo_bio:
-      logo_p = doc.add_paragraph()
-      logo_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-      logo_p.paragraph_format.space_before = Pt(0)
-      logo_p.paragraph_format.space_after = Pt(8)
-      logo_run = logo_p.add_run()
-      logo_run.add_picture(logo_bio, width=Inches(3.2))
-
     display_title = (
         st.session_state["job_title"].strip()
         if st.session_state["job_title"].strip() != ""
@@ -324,6 +302,7 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
     )
 
     header_p = doc.add_paragraph()
+    header_p.paragraph_format.space_before = Pt(4)
     header_p.paragraph_format.space_after = Pt(6)
     r_title = header_p.add_run(f"Job Title: {display_title}")
     r_title.bold = True
