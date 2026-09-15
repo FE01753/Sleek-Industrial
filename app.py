@@ -1,19 +1,24 @@
+import glob
 import io
 import os
-import glob
 import pickle
-from datetime import datetime
 from collections import defaultdict
+from datetime import datetime
+from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
+from docx.shared import Inches, Pt, RGBColor
 from PIL import Image
 import streamlit as st
-from docx import Document
-from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import parse_xml
-from docx.oxml.ns import nsdecls
 
-st.set_page_config(page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered")
+st.set_page_config(
+    page_title="Sleek-Industrial 進度記錄器",
+    page_icon="📸",
+    layout="centered",
+)
+
 
 def set_cell_border(cell, color="000000", sz="6", val="single"):
     tcPr = cell._element.get_or_add_tcPr()
@@ -23,9 +28,17 @@ def set_cell_border(cell, color="000000", sz="6", val="single"):
         f'  <w:left w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
         f'  <w:bottom w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
         f'  <w:right w:val="{val}" w:sz="{sz}" w:space="0" w:color="{color}"/>\n'
-        '</w:tcBorders>'
+        "</w:tcBorders>"
     )
     tcPr.append(tcBorders)
+
+
+def add_page_number(run):
+    """為 Word 頁尾加入動態頁碼欄位 (PAGE)"""
+    fldSimple = OxmlElement("w:fldSimple")
+    fldSimple.set(qn("w:instr"), "PAGE")
+    run._r.append(fldSimple)
+
 
 def get_saved_drafts():
     """獲取目前所有已暫存的 Job 草稿清單"""
@@ -41,17 +54,18 @@ def get_saved_drafts():
             pass
     return draft_map
 
+
 st.title("📸 Sleek-Industrial 進度記錄器")
 
 # --- 1. 初始化 Session State ---
-if 'records' not in st.session_state:
-    st.session_state['records'] = []
+if "records" not in st.session_state:
+    st.session_state["records"] = []
 
-if 'uploader_key' not in st.session_state:
-    st.session_state['uploader_key'] = 0
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
 
-if 'job_title' not in st.session_state:
-    st.session_state['job_title'] = ""
+if "job_title" not in st.session_state:
+    st.session_state["job_title"] = ""
 
 # --- 2. 項目基本資料 & 草稿管理 (極簡對稱 UI) ---
 st.subheader("📌 項目基本資料 & 草稿管理")
@@ -62,25 +76,34 @@ tab_save, tab_load = st.tabs(["💾 新建 / 暫存目前 Job", "📂 載入 / �
 with tab_save:
     with st.container(border=True):
         job_title = st.text_input(
-            "Job Title / 工程項目名稱", 
-            value=st.session_state['job_title'], 
+            "Job Title / 工程項目名稱",
+            value=st.session_state["job_title"],
             placeholder="例如: Regent Hotel F3 改善工程",
-            key="main_job_title_input"
+            key="main_job_title_input",
         )
-        st.session_state['job_title'] = job_title
+        st.session_state["job_title"] = job_title
 
-        safe_job = "".join(c for c in job_title if c.isalnum() or c in ('_', '-')).strip()
-        DRAFT_FILE = f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
+        safe_job = "".join(
+            c for c in job_title if c.isalnum() or c in ("_", "-")
+        ).strip()
+        DRAFT_FILE = (
+            f"draft_{safe_job}.pkl" if safe_job else "draft_default.pkl"
+        )
 
-        if st.button("💾 暫存此 Job 草稿", use_container_width=True, type="primary"):
+        if st.button(
+            "💾 暫存此 Job 草稿", use_container_width=True, type="primary"
+        ):
             if not safe_job:
                 st.warning("請先輸入 Job Title，先可以進行專屬暫存！")
-            elif len(st.session_state['records']) > 0:
+            elif len(st.session_state["records"]) > 0:
                 with open(DRAFT_FILE, "wb") as f:
-                    pickle.dump({
-                        "job_title": job_title,
-                        "records": st.session_state['records']
-                    }, f)
+                    pickle.dump(
+                        {
+                            "job_title": job_title,
+                            "records": st.session_state["records"],
+                        },
+                        f,
+                    )
                 st.success(f"已成功暫存【{job_title}】！")
                 st.rerun()
             else:
@@ -90,26 +113,32 @@ with tab_save:
 with tab_load:
     with st.container(border=True):
         saved_drafts = get_saved_drafts()
-        
+
         if saved_drafts:
             selected_draft_title = st.selectbox(
-                "揀選要繼續或刪除的 Job 草稿", 
+                "揀選要繼續或刪除的 Job 草稿",
                 options=list(saved_drafts.keys()),
-                key="draft_selectbox"
+                key="draft_selectbox",
             )
-            
+
             btn_col1, btn_col2 = st.columns(2)
             with btn_col1:
-                if st.button("📂 載入此草稿", use_container_width=True, type="primary"):
+                if st.button(
+                    "📂 載入此草稿", use_container_width=True, type="primary"
+                ):
                     target_file = saved_drafts[selected_draft_title]
                     if os.path.exists(target_file):
                         with open(target_file, "rb") as f:
                             data = pickle.load(f)
-                            st.session_state['records'] = data.get("records", [])
-                            st.session_state['job_title'] = data.get("job_title", selected_draft_title)
+                            st.session_state["records"] = data.get(
+                                "records", []
+                            )
+                            st.session_state["job_title"] = data.get(
+                                "job_title", selected_draft_title
+                            )
                         st.success(f"成功載入【{selected_draft_title}】！")
                         st.rerun()
-            
+
             with btn_col2:
                 if st.button("🗑️ 刪除此草稿", use_container_width=True):
                     target_file = saved_drafts[selected_draft_title]
@@ -122,29 +151,36 @@ with tab_load:
 
 st.divider()
 
+
 def get_grouped_records():
     grouped = defaultdict(list)
-    for idx, rec in enumerate(st.session_state['records']):
-        f_val = rec['floor'] if rec['floor'] else "未註明樓層"
-        r_val = rec['room'] if rec['room'] else ""
-        cat_val = rec['category']
+    for idx, rec in enumerate(st.session_state["records"]):
+        f_val = rec["floor"] if rec["floor"] else "未註明樓層"
+        r_val = rec["room"] if rec["room"] else ""
+        cat_val = rec["category"]
         key = (f_val, r_val, cat_val)
         grouped[key].append((idx, rec))
     return grouped
 
+
 # --- 3. 新增現場記錄 ---
 st.subheader("1️⃣ 新增現場記錄")
 
-floor = st.text_input("樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)")
-room = st.text_input("房間 / 區域 (Room / Area) [選填]", placeholder="例如: Function Room A / 掣房 (可留空)")
+floor = st.text_input(
+    "樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)"
+)
+room = st.text_input(
+    "房間 / 區域 (Room / Area) [選填]",
+    placeholder="例如: Function Room A / 掣房 (可留空)",
+)
 category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
 remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
 
 photos = st.file_uploader(
-    "拍攝或上傳現場相片 (可一次選取多張)", 
-    type=['jpg', 'jpeg', 'png', 'heic'], 
+    "拍攝或上傳現場相片 (可一次選取多張)",
+    type=["jpg", "jpeg", "png", "heic"],
     accept_multiple_files=True,
-    key=f"uploader_{st.session_state['uploader_key']}"
+    key=f"uploader_{st.session_state['uploader_key']}",
 )
 
 col_btn1, col_btn2 = st.columns([1, 1])
@@ -156,31 +192,33 @@ with col_btn1:
             f_val = floor.strip() if floor else ""
             r_val = room.strip() if room else ""
             rem_val = remarks.strip() if remarks else ""
-            
+
             for p in photos:
                 try:
                     img = Image.open(p)
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        img = img.convert('RGB')
-                    
+                    if img.mode in ("RGBA", "LA", "P"):
+                        img = img.convert("RGB")
+
                     photo_bytes = io.BytesIO()
-                    img.save(photo_bytes, format='JPEG', quality=90)
+                    img.save(photo_bytes, format="JPEG", quality=90)
                     photo_bytes.seek(0)
                     photo_bytes.name = "photo.jpg"
-                    
-                    st.session_state['records'].append({
-                        "floor": f_val,
-                        "room": r_val,
-                        "category": category,
-                        "remarks": rem_val,
-                        "photo": photo_bytes
-                    })
+
+                    st.session_state["records"].append(
+                        {
+                            "floor": f_val,
+                            "room": r_val,
+                            "category": category,
+                            "remarks": rem_val,
+                            "photo": photo_bytes,
+                        }
+                    )
                     success_count += 1
                 except Exception as e:
                     st.error(f"相片 {p.name} 處理失敗: {e}")
-            
+
             if success_count > 0:
-                st.session_state['uploader_key'] += 1
+                st.session_state["uploader_key"] += 1
                 st.success(f"成功新增 {success_count} 張相片！")
                 st.rerun()
         else:
@@ -188,7 +226,7 @@ with col_btn1:
 
 with col_btn2:
     if st.button("🧹 清空相片 / 重置", use_container_width=True):
-        st.session_state['uploader_key'] += 1
+        st.session_state["uploader_key"] += 1
         st.rerun()
 
 st.divider()
@@ -203,26 +241,34 @@ if len(grouped_data) > 0:
         if group_room:
             title_parts.append(f"📍 區域: {group_room}")
         title_parts.append(f"🔧 類別: {group_cat} (共 {len(items)} 張)")
-        
+
         title_str = " | ".join(title_parts)
-        
+
         with st.expander(title_str, expanded=True):
             cols = st.columns(3)
             for sub_idx, (orig_idx, rec) in enumerate(items):
                 with cols[sub_idx % 3]:
-                    rec['photo'].seek(0)
-                    st.image(rec['photo'], use_container_width=True)
-                    if rec['remarks']:
+                    rec["photo"].seek(0)
+                    st.image(rec["photo"], use_container_width=True)
+                    if rec["remarks"]:
                         st.write(f"📝 {rec['remarks']}")
                     if st.button("🗑️ 刪除", key=f"del_{orig_idx}"):
-                        st.session_state['records'].pop(orig_idx)
+                        st.session_state["records"].pop(orig_idx)
                         st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ 清空所有記錄"):
-        st.session_state['records'] = []
-        safe_job_name = "".join(c for c in st.session_state['job_title'] if c.isalnum() or c in ('_', '-')).strip()
-        curr_draft = f"draft_{safe_job_name}.pkl" if safe_job_name else "draft_default.pkl"
+        st.session_state["records"] = []
+        safe_job_name = "".join(
+            c
+            for c in st.session_state["job_title"]
+            if c.isalnum() or c in ("_", "-")
+        ).strip()
+        curr_draft = (
+            f"draft_{safe_job_name}.pkl"
+            if safe_job_name
+            else "draft_default.pkl"
+        )
         if os.path.exists(curr_draft):
             os.remove(curr_draft)
         st.rerun()
@@ -234,7 +280,7 @@ st.divider()
 # --- 5. 一鍵生成 Word 報告 ---
 st.subheader("3️⃣ 匯出報告")
 if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_width=True):
-    if len(st.session_state['records']) == 0:
+    if len(st.session_state["records"]) == 0:
         st.warning("請先新增至少一個記錄先可以出 Report！")
     else:
         doc = Document()
@@ -245,7 +291,41 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
             section.left_margin = Inches(0.5)
             section.right_margin = Inches(0.5)
 
-        display_title = st.session_state['job_title'].strip() if st.session_state['job_title'].strip() != "" else "Unnamed Project"
+            # -------------------------------------------------------------
+            # ✨ 頁首設置 (Header): 加入遠東工程 Logo
+            # -------------------------------------------------------------
+            header = section.header
+            header_p = header.paragraphs[0]
+            header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+            logo_path = "logo.png"  # 請把公司 Logo 圖片儲存為 logo.png 放在專案資料夾
+            if os.path.exists(logo_path):
+                try:
+                    header_run = header_p.add_run()
+                    header_run.add_picture(
+                        logo_path, height=Inches(0.45)
+                    )  # 控制 Logo 高度
+                except Exception:
+                    pass
+
+            # -------------------------------------------------------------
+            # ✨ 頁尾設置 (Footer): 加入動態頁碼 (Page X)
+            # -------------------------------------------------------------
+            footer = section.footer
+            footer_p = footer.paragraphs[0]
+            footer_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+            footer_run = footer_p.add_run("Page ")
+            footer_run.font.size = Pt(9)
+            footer_run.font.color.rgb = RGBColor(128, 128, 128)
+
+            add_page_number(footer_run)  # 自動插入 Word 頁碼欄位
+
+        display_title = (
+            st.session_state["job_title"].strip()
+            if st.session_state["job_title"].strip() != ""
+            else "Unnamed Project"
+        )
 
         header_p = doc.add_paragraph()
         header_p.paragraph_format.space_after = Pt(6)
@@ -253,7 +333,9 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
         r_title.bold = True
         r_title.font.size = Pt(12)
 
-        r_date = header_p.add_run(f"  |  Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        r_date = header_p.add_run(
+            f"  |  Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
         r_date.font.size = Pt(10)
         r_date.font.color.rgb = RGBColor(100, 100, 100)
 
@@ -261,17 +343,21 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
         global_card_count = 0
         group_index = 0
 
-        for (group_floor, group_room, group_cat), items in grouped_data.items():
+        for (
+            group_floor,
+            group_room,
+            group_cat,
+        ), items in grouped_data.items():
             if group_index > 0:
                 doc.add_page_break()
                 global_card_count = 0
-            
+
             group_index += 1
 
             group_p = doc.add_paragraph()
             group_p.paragraph_format.space_before = Pt(4)
             group_p.paragraph_format.space_after = Pt(4)
-            
+
             header_text = f"【 樓層: {group_floor}"
             if group_room:
                 header_text += f"  |  區域: {group_room}"
@@ -300,7 +386,9 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
                         orig_idx, rec = items[item_sub_idx]
                         global_card_count += 1
 
-                        set_cell_border(cell, color="000000", sz="6", val="single")
+                        set_cell_border(
+                            cell, color="000000", sz="6", val="single"
+                        )
 
                         p = cell.paragraphs[0]
                         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -308,12 +396,14 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
                         p.paragraph_format.space_after = Pt(2)
 
                         try:
-                            rec['photo'].seek(0)
-                            p.add_run().add_picture(rec['photo'], height=Inches(2.2))
+                            rec["photo"].seek(0)
+                            p.add_run().add_picture(
+                                rec["photo"], height=Inches(2.2)
+                            )
                         except Exception:
                             p.add_run("[相片載入失敗]")
 
-                        if rec['remarks']:
+                        if rec["remarks"]:
                             p_txt = cell.add_paragraph()
                             p_txt.paragraph_format.space_before = Pt(2)
                             p_txt.paragraph_format.space_after = Pt(4)
@@ -324,7 +414,9 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
                             r_rem.font.color.rgb = RGBColor(50, 50, 50)
 
                     else:
-                        set_cell_border(cell, color="FFFFFF", sz="0", val="none")
+                        set_cell_border(
+                            cell, color="FFFFFF", sz="0", val="none"
+                        )
 
                 spacer = doc.add_paragraph()
                 spacer.paragraph_format.space_before = Pt(0)
@@ -334,20 +426,26 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
         doc.save(buffer)
         buffer.seek(0)
 
-        safe_job_title = "".join(c for c in display_title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')
+        safe_job_title = (
+            "".join(
+                c for c in display_title if c.isalnum() or c in (" ", "_", "-")
+            )
+            .strip()
+            .replace(" ", "_")
+        )
 
         st.download_button(
             label="💾 點擊下載 Word 報告 (.docx)",
             data=buffer,
             file_name=f"Report_{safe_job_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
+            use_container_width=True,
         )
 
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: gray; font-size: 14px;'>"
     "🛠️ <b>Design by nikki 💅</b>"
-    "</div>", 
-    unsafe_allow_html=True
+    "</div>",
+    unsafe_allow_html=True,
 )
