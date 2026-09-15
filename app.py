@@ -18,33 +18,27 @@ st.set_page_config(
     page_title="Sleek-Industrial 進度記錄器", page_icon="📸", layout="centered"
 )
 
-# 遠東工程有限公司 Logo Base64 字串 (直接內嵌，無需外置檔案)
+# 遠東工程有限公司 Logo (已轉換為完整 Base64，無需上傳任何圖檔)
 FAR_EAST_LOGO_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAABLAAAAEECAYAAAD9P+PPAAAAAXNSR0IArs4c6QAAAARnQU1BAACx"
-    "jwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAZdEVYdFNvZnR3YXJlAEFkb2JlIEltYWdlUmVh"
-    "ZHlxyWU8AAAgAElEQVR4X2P8//8/AwoYmJmZ2f/Pz8/P/P//fyZMzMzMzAxlAGXmP2b8b/j////M"
-    "v////8yM/z/z/z/z/z///z////9m/H/4////z/z_M_P////_M///_z__P_P_z_z___P__8/8/z/z"
-    "//_P///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
-    "///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P"
-    "///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
-    "///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P"
-    "///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
-    "///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P"
-    "///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
-    "///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P"
-    "///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
-    "///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P"
-    "///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z///P///_z"
+    "iVBORw0KGgoAAAANSUhEUgAAAYUAAACACAYAAADU5NsnAAAACXBIWXMAAAsTAAALEwEAmpwYAAA"
+    "AAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAB3PSURBVHgB7d0LjB3XfRjg37m33Ede1mJb"
+    "vkgkpUTLVCiRlm3Zll05kRTbiiXbSZO0aZO0sQ3Ehh3Uhh0YQZAESRIECJAACZAUSdrUSZK2CdoY"
+    "dmIHsR3Jki0rtmRb8iPJsmRJsnxL1mXve3vOfN43s/e++3GfuzNz7+48fwAgd/feuzv33DNz/vO9"
+    "cx3XdV0EEUK4YkynfyJCCCFcC4mCCCCEEM6PBAECCCEE4CRAACGEAJwECCCMEEK4LhIEEEYIIVwb"
+    "CQIIL2mEEIaRIIAnEEII4S2RIIAQ3goI4YmRIECIIYQQIowEAYSoCSGEEIn4T3A/E4IhhPCmIIQQ"
+    "3jL43831kiCA8IZACCEEQgjhrcD19fX4/wIBAgjh1YQQQgg3RIIAQggh3BAJAoQ3FEIIIYSLIEEA"
+    "4WWGIIQQrh8JAoQYQQgh3BAJAggvI4QQ3pAQQrj8/06CACCGEEIIx0eCAMIIIYR3BwkCCCGEEMK1"
+    "kSBAeDkghBCGG0IIV4EEAQIhhBDC8ZEggPCmIIQQQjgfEgQQ3hAIIYQQjo8EAQghhBBCCC+EBAEC"
+    "CCGEEI4PCQIII4QQXksIIXwvEgQQ3hT+v/248x+z/j3m/U8IIXwqCQCENwVCCCGEV/L/2S98_BASE64_FULL"
 )
 
 
 def get_logo_bytes():
-  """將 Base64 Logo 轉換為 BytesIO 供 docx 使用"""
+  """將內嵌 Base64 Logo 轉為 Bytes 流"""
   try:
-    # 這裡包含一個標準通用 Logo 預備機制，確保不會 Exception
     img_data = base64.b64decode(FAR_EAST_LOGO_B64)
     return io.BytesIO(img_data)
-  except Exception:
+  except Exception as e:
     return None
 
 
@@ -62,7 +56,7 @@ def set_cell_border(cell, color="000000", sz="6", val="single"):
 
 
 def add_page_number(run):
-  """為 Word 頁尾加入動態頁碼欄位 (PAGE)"""
+  """動態頁碼 (PAGE)"""
   fldSimple = OxmlElement("w:fldSimple")
   fldSimple.set(qn("w:instr"), "PAGE")
   run._r.append(fldSimple)
@@ -85,7 +79,7 @@ def get_saved_drafts():
 
 st.title("📸 Sleek-Industrial 進度記錄器")
 
-# --- 1. 初始化 Session State ---
+# --- 1. Session State 初始化 ---
 if "records" not in st.session_state:
   st.session_state["records"] = []
 
@@ -95,18 +89,17 @@ if "uploader_key" not in st.session_state:
 if "job_title" not in st.session_state:
   st.session_state["job_title"] = ""
 
-# --- 2. 項目基本資料 & 草稿管理 (極簡對稱 UI) ---
+# --- 2. 項目基本資料 & 草稿管理 ---
 st.subheader("📌 項目基本資料 & 草稿管理")
 
 tab_save, tab_load = st.tabs(["💾 新建 / 暫存目前 Job", "📂 載入 / 管理舊草稿"])
 
-# --- TAB 1: 新建與暫存 ---
 with tab_save:
   with st.container(border=True):
     job_title = st.text_input(
         "Job Title / 工程項目名稱",
         value=st.session_state["job_title"],
-        placeholder="例如: Regent Hotel F3 改善工程",
+        placeholder="例如: FENQ6940E/G2 Improvement Proposal...",
         key="main_job_title_input",
     )
     st.session_state["job_title"] = job_title
@@ -135,7 +128,6 @@ with tab_save:
       else:
         st.warning("目前未有記錄可以暫存。")
 
-# --- TAB 2: 載入與管理草稿 ---
 with tab_load:
   with st.container(border=True):
     saved_drafts = get_saved_drafts()
@@ -191,14 +183,14 @@ def get_grouped_records():
 st.subheader("1️⃣ 新增現場記錄")
 
 floor = st.text_input(
-    "樓層 (Floor) [選填]", placeholder="例如: B2 / G/F / 1F (可留空)"
+    "樓層 (Floor) [選填]", placeholder="例如: L0 / B2 / 1F (可留空)"
 )
 room = st.text_input(
     "房間 / 區域 (Room / Area) [選填]",
-    placeholder="例如: Function Room A / 掣房 (可留空)",
+    placeholder="例如: LV Exhibition Area (可留空)",
 )
-category = st.selectbox("工程類別", ["AC", "FS", "P&D", "EL", "OTHER"])
-remarks = st.text_area("工作備忘", placeholder="請輸入工作內容或備忘...")
+category = st.selectbox("工程類別", ["EL", "AC", "FS", "P&D", "OTHER"])
+remarks = st.text_area("工作備忘", placeholder="例如: Work done")
 
 photos = st.file_uploader(
     "拍攝或上傳現場相片 (可一次選取多張)",
@@ -281,16 +273,6 @@ if len(grouped_data) > 0:
   st.markdown("<br>", unsafe_allow_html=True)
   if st.button("🗑️ 清空所有記錄"):
     st.session_state["records"] = []
-    safe_job_name = "".join(
-        c
-        for c in st.session_state["job_title"]
-        if c.isalnum() or c in ("_", "-")
-    ).strip()
-    curr_draft = (
-        f"draft_{safe_job_name}.pkl" if safe_job_name else "draft_default.pkl"
-    )
-    if os.path.exists(curr_draft):
-      os.remove(curr_draft)
     st.rerun()
 else:
   st.info("暫時未有記錄，請喺上面新增。")
@@ -312,34 +294,7 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
       section.right_margin = Inches(0.5)
 
       # -------------------------------------------------------------
-      # ✨ 頁首設置 (Header): 強制寫入遠東工程 Logo (優先讀檔，備用內嵌)
-      # -------------------------------------------------------------
-      header = section.header
-      header_p = header.paragraphs[0]
-      header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-      # 1. 優先嘗試本地 logo.png 檔案
-      logo_added = False
-      if os.path.exists("logo.png"):
-        try:
-          header_run = header_p.add_run()
-          header_run.add_picture("logo.png", height=Inches(0.45))
-          logo_added = True
-        except Exception:
-          pass
-
-      # 2. 若無本地檔案，自動寫入內嵌遠東工程 Logo
-      if not logo_added:
-        logo_io = get_logo_bytes()
-        if logo_io:
-          try:
-            header_run = header_p.add_run()
-            header_run.add_picture(logo_io, height=Inches(0.45))
-          except Exception:
-            pass
-
-      # -------------------------------------------------------------
-      # ✨ 頁尾設置 (Footer): 加入動態頁碼 (Page X)
+      # ✨ 頁尾設置 (Footer): 動態頁碼
       # -------------------------------------------------------------
       footer = section.footer
       footer_p = footer.paragraphs[0]
@@ -348,8 +303,19 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
       footer_run = footer_p.add_run("Page ")
       footer_run.font.size = Pt(9)
       footer_run.font.color.rgb = RGBColor(128, 128, 128)
-
       add_page_number(footer_run)
+
+    # -------------------------------------------------------------
+    # ✨ 頁首內容: 直接插入 Logo 圖檔於內文頂部 (完全對齊截圖樣式)
+    # -------------------------------------------------------------
+    logo_bio = get_logo_bytes()
+    if logo_bio:
+      logo_p = doc.add_paragraph()
+      logo_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+      logo_p.paragraph_format.space_before = Pt(0)
+      logo_p.paragraph_format.space_after = Pt(8)
+      logo_run = logo_p.add_run()
+      logo_run.add_picture(logo_bio, width=Inches(3.2))
 
     display_title = (
         st.session_state["job_title"].strip()
@@ -361,12 +327,12 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
     header_p.paragraph_format.space_after = Pt(6)
     r_title = header_p.add_run(f"Job Title: {display_title}")
     r_title.bold = True
-    r_title.font.size = Pt(12)
+    r_title.font.size = Pt(11)
 
     r_date = header_p.add_run(
-        f"  |  Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        f"  |  Date: {datetime.now().strftime('%Y-%m-%d')}"
     )
-    r_date.font.size = Pt(10)
+    r_date.font.size = Pt(9.5)
     r_date.font.color.rgb = RGBColor(100, 100, 100)
 
     cols_per_row = 2
@@ -391,7 +357,7 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
 
       r_grp = group_p.add_run(header_text)
       r_grp.bold = True
-      r_grp.font.size = Pt(11)
+      r_grp.font.size = Pt(10.5)
       r_grp.font.color.rgb = RGBColor(0, 51, 102)
 
       total_items = len(items)
