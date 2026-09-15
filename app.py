@@ -270,11 +270,11 @@ if st.button("📥 一鍵生成 Word 報告", type="primary", use_container_widt
       section.right_margin = Inches(0.5)
 
       # -------------------------------------------------------------
-      # ✨ 頁首設置 (Header): 放公司名稱文字 (靠右)
+      # ✨ 頁首設置 (Header): 放公司名稱文字 (靠左對齊)
       # -------------------------------------------------------------
       header = section.header
       header_p = header.paragraphs[0]
-      header_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+      header_p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # 靠左對齊
 
       r_company = header_p.add_run(
           "Far East Engineering Services Ltd\n遠東工程服務有限公司"
